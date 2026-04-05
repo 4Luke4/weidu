@@ -13,6 +13,17 @@ open BatteriesInit
 open Hashtblinit
 let version = "25201"
 
+type release_type =
+  | Stable
+  | Release_Candidate
+  | Development
+
+let release_type version =
+  (match (int_of_string version) mod 100 with
+  | 0 -> Stable
+  | 1 -> Development
+  | v when v > 1 -> Release_Candidate)
+
 (* Historical Comments: *)
 (* 7 let comment = "Underdark Army Knife" *)
 (* 8 let comment = "Meta-Circular Evaluator" *)
