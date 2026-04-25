@@ -3255,8 +3255,9 @@ MOVE (~sourceDirectory~ ~^[A-M].*\.itm$~) ~destinationDirectory
       Waits for the user to provided an enter-terminated string and store it in
       variable. Said string will be stored and re-used during non-interactive reinstalls. See the
       \ahrefloc{sec-readln}{\t{READLN} tutorial}. \\
-  or & \t{\textbf{APPEND}}\label{APPEND (TP2)} \ttref{optNoBackup} filename
-      newText \ttref{when} \Slist \Ob \t{KEEP_CRLF} \Oe  &
+  or & \t{\textbf{APPEND}}\index{APPEND (TP2)}\label{APPEND (TP2)}
+  \ttref{optNoBackup} filename newText \ttref{when} \Slist \Ob
+  \t{KEEP_CRLF} \Oe  &
       If there are no \ttref{when} conditions or they are all true, the
       ASCII text newText is appended to the existing file filename (which
       is read from the game \ttref{BIFF}s or the \t{override} folder).
@@ -3327,9 +3328,9 @@ P Q R 3
 	  assumed to be at the beginning of newText. A cell containing exactly
 	  \verb+$+ is printed as empty. \\
 
-  or & \t{\textbf{EXTEND_TOP}}\label{EXTEND_TOP (TP2)} existingBCS
-    newFile \ttref{patch} \Slist \Ob \t{USING} traName \Slist \Oe
-    \Ob \ttref{when} \Slist \Oe &
+  or & \t{\textbf{EXTEND_TOP}}\index{EXTEND_TOP (TP2)}
+  \label{EXTEND_TOP (TP2)} existingBCS newFile \ttref{patch} \Slist
+  \Ob \t{USING} traName \Slist \Oe \Ob \ttref{when} \Slist \Oe &
 
     If there are no \ttref{when} conditions, or they are all true,
     loads existingFile (which may be \ttref{BAF} or \ttref{BCS}),
@@ -3340,9 +3341,9 @@ P Q R 3
     want to evaluate variables inside the body of newFile before
     parsing it. \\
 
-  or & \t{\textbf{EXTEND_BOTTOM}}\label{EXTEND_BOTTOM (TP2)} existingBCS
-    newFile \ttref{patch} \Slist \Ob \t{USING} traName \Slist \Oe
-    \Ob \ttref{when} \Slist \Oe &
+  or & \t{\textbf{EXTEND_BOTTOM}}\index{EXTEND_BOTTOM (TP2)}
+  \label{EXTEND_BOTTOM (TP2)} existingBCS newFile \ttref{patch}
+  \Slist \Ob \t{USING} traName \Slist \Oe \Ob \ttref{when} \Slist \Oe &
     As \ttref{EXTEND_TOP (TP2)}, but the newFile file is put at the
     bottom of the existingBCS file. User variables in the filenames
     existingFile and newFile are replaced by their values. \\
@@ -3993,7 +3994,7 @@ or & \DEFINE{REINCLUDE} \t{\ttref{String}} \Slist &
 or & \DEFINE{ACTION_REINCLUDE} \t{\ttref{String}} \Slist &
     A synonym of \ttref{REINCLUDE}.
     \\
-  or & \t{<<<<<<<<} fileName fileBody \t{>>>>>>>>}\label{inlined} &
+  or & \t{<<<<<<<<} fileName fileBody \t{>>>>>>>>}\index{inlined}\label{inlined} &
     (That's eight (8) angle brackets on each side.)
     For the purposes of copying and compiling files, WeiDU will pretend
     that fileName is a real file with contents fileBody. This allows you to
