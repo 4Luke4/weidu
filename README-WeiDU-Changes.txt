@@ -1,4 +1,8 @@
 Version 251:
+  * Mod-supplied external commands require explicit authorization.
+    Interactive runs ask before execution, while non-interactive runs
+    deny by default. Add --ask-external-commands,
+    --allow-external-commands, and --deny-external-commands.
   * CREATE called within CREATE works as expected.
   * CREATE sets SOURCE_* and DEST_* variables.
   * Auto-update does not fail if the filename of the newest WeiDU

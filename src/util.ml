@@ -616,8 +616,91 @@ let create_filter = function () ->
     res
   in f
 
-let exec_command cmd exact =
-  let cmd = if exact then cmd else Arch.slash_to_backslash cmd in
+type external_command_policy =
+| External_command_ask
+| External_command_allow
+| External_command_deny
+
+let external_command_policy =
+  ref
+    (try
+      if Unix.isatty Unix.stdin && Unix.isatty Unix.stdout then
+        External_command_ask
+      else
+        External_command_deny
+    with _ -> External_command_deny)
+
+let set_external_command_policy policy =
+  external_command_policy := policy
+
+let security_log_and_print fmt =
+  let k result = begin
+    output_string stdout result ;
+    flush stdout ;
+    (match !log_channel with
+    | None -> ()
+    | Some(o) -> output_string o result ; flush o)
+  end in
+  Printf.kprintf k fmt
+
+let rec prompt_for_external_command cmd =
+  security_log_and_print
+    "\nSECURITY: A mod requests permission to run an external command.\n\
+     Command: %S\n\
+     The command runs with your account's permissions and is not restricted \
+     to the game directory.\n\
+     Run it [Y]es once, allow [A]ll external commands for this WeiDU run, \
+     or [N]o? "
+    cmd ;
+  let answer =
+    try String.uppercase_ascii (String.trim (read_line ()))
+    with _ -> "N" in
+  match answer with
+  | "Y"
+  | "YES" -> true
+  | "A"
+  | "ALL" ->
+      external_command_policy := External_command_allow ;
+      true
+  | "N"
+  | "NO"
+  | "" -> false
+  | _ ->
+      security_log_and_print
+        "Please answer Y (once), A (all for this run), or N (deny).\n" ;
+      prompt_for_external_command cmd
+
+let prepare_external_command cmd exact =
+  if exact then cmd else Arch.slash_to_backslash cmd
+
+type authorized_external_command = {
+    command : string ;
+  }
+
+let authorize_prepared_external_command cmd =
+  if cmd = "" then
+    ()
+  else
+    let authorized =
+      match !external_command_policy with
+      | External_command_allow -> true
+      | External_command_deny -> false
+      | External_command_ask -> prompt_for_external_command cmd in
+    if authorized then
+      log_only "External command authorized: %S\n" cmd
+    else begin
+      security_log_and_print
+        "\nExternal command denied by security policy: %S\n" cmd ;
+      failwith "External command denied by security policy"
+    end
+
+let authorize_external_command command exact =
+  let command = prepare_external_command command exact in
+  authorize_prepared_external_command command ;
+  { command }
+
+let execute_authorized_external_command authorized =
+  let cmd = authorized.command in
   let ret = if !log_extern then
     begin
       (* copy stdout + stderr to logfile *)
@@ -642,11 +725,24 @@ let exec_command cmd exact =
     end else Unix.system cmd
   in ret
 
+let exec_command command exact =
+  execute_authorized_external_command
+    (authorize_external_command command exact)
+
 type execute_at_exit_type =
-| Command of string * bool
+| Command of authorized_external_command
 | Fn of (unit) Lazy.t
 
 let execute_at_exit = ref ([] : (execute_at_exit_type) list)
+
+let enqueue_external_command command exact =
+  let candidate = { command = prepare_external_command command exact } in
+  if List.mem (Command candidate) !execute_at_exit then
+    ()
+  else begin
+    authorize_prepared_external_command candidate.command ;
+    execute_at_exit := (Command candidate) :: !execute_at_exit
+  end
 
 (* for some stupid reason these cannot be in the parser or the lexer *)
 

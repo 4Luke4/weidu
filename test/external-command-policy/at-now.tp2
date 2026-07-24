@@ -1,0 +1,6 @@
+BACKUP ~backup~
+AUTHOR ~WeiDU regression tests~
+
+BEGIN ~External command policy: AT_NOW~
+
+AT_NOW ~: > command-ran~ EXACT

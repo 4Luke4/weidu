@@ -3445,6 +3445,21 @@ P Q R 3
     WeiDU doesn't handle, like extracting WAVs from an MP3, make a batch
     file and run it from here.
     \end{itemize}
+    External operating-system commands require explicit authorization.
+    With an interactive terminal, WeiDU displays the exact command and asks
+    whether to run it once, allow all external commands for the current WeiDU
+    run, or deny it. Without an interactive terminal, commands are denied by
+    default. The command-line options \t{--ask-external-commands},
+    \t{--allow-external-commands}, and \t{--deny-external-commands} select the
+    policy explicitly. \t{--yes} does not authorize external commands.
+    Denying a command aborts and rolls back the component rather than
+    continuing after an expected side effect did not occur.
+
+    External commands run with the user's operating-system permissions and
+    are not restricted to the game directory. Only use
+    \t{--allow-external-commands} with mods that you trust. This authorization
+    boundary is not an operating-system sandbox and does not restrict
+    WeiDU's built-in file operations.
     Slashes and backslashes will be converted appropriately for the
     underlying operating system. If \t{EXACT} is specified, \verb+/+
     and \verb+\+ will instead be preserved as they are. \t{EXACT}
