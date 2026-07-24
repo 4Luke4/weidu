@@ -1536,10 +1536,10 @@ let main () =
     "--skip-at-view", Myarg.Set Tp.skip_at_view, "\tkills AT_* ~VIEW this~";
     "--ask-external-commands", Myarg.Unit (fun () ->
       set_external_command_policy External_command_ask),
-      "\task before running each mod-supplied external command";
+      "\task before mod-supplied external commands (prompt approval is TP2/component-scoped)";
     "--allow-external-commands", Myarg.Unit (fun () ->
       set_external_command_policy External_command_allow),
-      "\tallow mod-supplied external commands without prompting (unsafe)";
+      "\tallow mod-supplied external commands for this invocation without prompting (unsafe)";
     "--deny-external-commands", Myarg.Unit (fun () ->
       set_external_command_policy External_command_deny),
       "\tdeny all mod-supplied external commands";
@@ -2142,7 +2142,11 @@ let main () =
 
 (try
   Stats.time "stuff not covered elsewhere" main ();
-with e ->
+with
+| External_command_denied _ as e ->
+  exit_status := StatusInstallFailure ;
+  log_and_print "\nFATAL ERROR: %s\n" (printexc_to_string e)
+| e ->
   log_and_print "\nFATAL ERROR: %s\n" (printexc_to_string e) ) ;
 
 (match !Util.log_channel with
@@ -2151,7 +2155,13 @@ with e ->
 
 List.iter (fun c -> match c with
 | Command command ->
-    log_or_print "Executing: [%s]\n" command.command ;
+    let request = command.request in
+    log_or_print
+      "Executing external command for %S component %s (%s): [%s]\n"
+      request.external_command_tp2
+      (external_command_component_name request)
+      (external_command_action_name request.external_command_action)
+      command.command ;
     ignore (execute_authorized_external_command command)
 | Fn f ->
     Lazy.force f)

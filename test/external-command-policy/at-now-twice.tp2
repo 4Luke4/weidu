@@ -3,5 +3,5 @@ AUTHOR ~WeiDU regression tests~
 
 BEGIN ~External command policy: allow for run~
 
-AT_NOW ~: > first-command-ran~ EXACT
-AT_NOW ~: > second-command-ran~ EXACT
+AT_NOW ~echo ran > first-command-ran~ EXACT
+AT_NOW ~echo ran > second-command-ran~ EXACT

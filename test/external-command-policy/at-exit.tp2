@@ -3,4 +3,4 @@ AUTHOR ~WeiDU regression tests~
 
 BEGIN ~External command policy: AT_EXIT~
 
-AT_EXIT ~: > command-ran~ EXACT
+AT_EXIT ~echo ran > command-ran~ EXACT

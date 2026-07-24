@@ -621,6 +621,25 @@ type external_command_policy =
 | External_command_allow
 | External_command_deny
 
+type external_command_action =
+| External_at_now
+| External_at_interactive_now
+| External_at_exit
+| External_at_interactive_exit
+| External_at_uninstall
+| External_at_interactive_uninstall
+| External_at_uninstall_exit
+| External_at_interactive_uninstall_exit
+| External_readme
+
+type external_command_request = {
+    external_command_tp2 : string ;
+    external_command_component : int option ;
+    external_command_action : external_command_action ;
+  }
+
+exception External_command_denied of external_command_request
+
 let external_command_policy =
   ref
     (try
@@ -630,8 +649,12 @@ let external_command_policy =
         External_command_deny
     with _ -> External_command_deny)
 
+let approved_external_command_scopes =
+  ref ([] : (string * int option) list)
+
 let set_external_command_policy policy =
-  external_command_policy := policy
+  external_command_policy := policy ;
+  approved_external_command_scopes := []
 
 let security_log_and_print fmt =
   let k result = begin
@@ -643,61 +666,165 @@ let security_log_and_print fmt =
   end in
   Printf.kprintf k fmt
 
-let rec prompt_for_external_command cmd =
-  security_log_and_print
-    "\nSECURITY: A mod requests permission to run an external command.\n\
-     Command: %S\n\
-     The command runs with your account's permissions and is not restricted \
-     to the game directory.\n\
-     Run it [Y]es once, allow [A]ll external commands for this WeiDU run, \
-     or [N]o? "
-    cmd ;
-  let answer =
-    try String.uppercase_ascii (String.trim (read_line ()))
-    with _ -> "N" in
-  match answer with
-  | "Y"
-  | "YES" -> true
-  | "A"
-  | "ALL" ->
-      external_command_policy := External_command_allow ;
-      true
-  | "N"
-  | "NO"
-  | "" -> false
-  | _ ->
+let external_command_action_name = function
+| External_at_now -> "AT_NOW"
+| External_at_interactive_now -> "AT_INTERACTIVE_NOW"
+| External_at_exit -> "AT_EXIT"
+| External_at_interactive_exit -> "AT_INTERACTIVE_EXIT"
+| External_at_uninstall -> "AT_UNINSTALL"
+| External_at_interactive_uninstall -> "AT_INTERACTIVE_UNINSTALL"
+| External_at_uninstall_exit -> "AT_UNINSTALL_EXIT"
+| External_at_interactive_uninstall_exit ->
+    "AT_INTERACTIVE_UNINSTALL_EXIT"
+| External_readme -> "README"
+
+let external_command_component_name request =
+  match request.external_command_component with
+  | Some component -> string_of_int component
+  | None -> "not applicable"
+
+let external_command_scope request =
+  (request.external_command_tp2, request.external_command_component)
+
+let external_command_scope_is_approved request =
+  List.mem
+    (external_command_scope request)
+    !approved_external_command_scopes
+
+let approve_external_command_scope request =
+  let scope = external_command_scope request in
+  if not (List.mem scope !approved_external_command_scopes) then
+    approved_external_command_scopes :=
+      scope :: !approved_external_command_scopes
+
+let external_command_confirmation_state =
+  lazy (Random.State.make_self_init ())
+
+let external_command_confirmation_alphabet =
+  "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+let external_command_confirmation_length = 8
+
+let make_external_command_confirmation_token () =
+  let state = Lazy.force external_command_confirmation_state in
+  let alphabet_length =
+    String.length external_command_confirmation_alphabet in
+  let token = Bytes.create external_command_confirmation_length in
+  for i = 0 to external_command_confirmation_length - 1 do
+    Bytes.set token i
+      (String.get external_command_confirmation_alphabet
+         (Random.State.int state alphabet_length))
+  done ;
+  Bytes.to_string token
+
+type external_command_prompt_decision =
+| External_command_allow_once
+| External_command_allow_scope
+| External_command_reject
+
+let prompt_for_external_command request cmd =
+  let token =
+    try Some (make_external_command_confirmation_token ())
+    with _ -> None in
+  match token with
+  | None ->
       security_log_and_print
-        "Please answer Y (once), A (all for this run), or N (deny).\n" ;
-      prompt_for_external_command cmd
+        "\nSECURITY: WeiDU could not create a fresh confirmation token; \
+         the external command will be denied.\n" ;
+      External_command_reject
+  | Some token ->
+      security_log_and_print
+        "\n=== WEIDU EXTERNAL COMMAND AUTHORIZATION ===\n\
+         Requesting TP2: %S\n\
+         Component: %s\n\
+         Action: %s\n\
+         Command: %S\n\
+         The command runs with your account's permissions and is not restricted \
+         to the game directory.\n\
+         Confirmation token: %s\n\
+         Type \"Y %s\" to run it once, \"A %s\" to allow external commands \
+         from this TP2 component, or \"N\" to deny: "
+        request.external_command_tp2
+        (external_command_component_name request)
+        (external_command_action_name request.external_command_action)
+        cmd token token token ;
+      let rec read_decision () =
+        let answer =
+          try String.uppercase_ascii (String.trim (read_line ()))
+          with _ -> "N" in
+        let words =
+          if answer = "" then []
+          else Str.split (Str.regexp "[ \t]+") answer in
+        match words with
+        | ["Y"; supplied]
+        | ["YES"; supplied] when supplied = token ->
+            External_command_allow_once
+        | ["A"; supplied]
+        | ["ALL"; supplied] when supplied = token ->
+            External_command_allow_scope
+        | []
+        | ["N"]
+        | ["NO"] ->
+            External_command_reject
+        | _ ->
+            security_log_and_print
+              "The confirmation did not match. Type \"Y %s\", \"A %s\", or \
+               \"N\": "
+              token token ;
+            read_decision ()
+      in
+      read_decision ()
 
 let prepare_external_command cmd exact =
   if exact then cmd else Arch.slash_to_backslash cmd
 
 type authorized_external_command = {
     command : string ;
+    request : external_command_request ;
   }
 
-let authorize_prepared_external_command cmd =
+let authorize_prepared_external_command request cmd =
   if cmd = "" then
     ()
   else
-    let authorized =
+    let decision =
       match !external_command_policy with
-      | External_command_allow -> true
-      | External_command_deny -> false
-      | External_command_ask -> prompt_for_external_command cmd in
-    if authorized then
-      log_only "External command authorized: %S\n" cmd
-    else begin
-      security_log_and_print
-        "\nExternal command denied by security policy: %S\n" cmd ;
-      failwith "External command denied by security policy"
-    end
+      | External_command_allow -> External_command_allow_once
+      | External_command_deny -> External_command_reject
+      | External_command_ask
+          when external_command_scope_is_approved request ->
+          External_command_allow_once
+      | External_command_ask ->
+          prompt_for_external_command request cmd in
+    match decision with
+    | External_command_allow_once ->
+        log_only
+          "External command authorized for %S component %s (%s): %S\n"
+          request.external_command_tp2
+          (external_command_component_name request)
+          (external_command_action_name request.external_command_action)
+          cmd
+    | External_command_allow_scope ->
+        approve_external_command_scope request ;
+        log_only
+          "External command scope authorized for %S component %s: %S\n"
+          request.external_command_tp2
+          (external_command_component_name request)
+          cmd
+    | External_command_reject ->
+        security_log_and_print
+          "\nExternal command denied by security policy for %S component %s \
+           (%s): %S\n"
+          request.external_command_tp2
+          (external_command_component_name request)
+          (external_command_action_name request.external_command_action)
+          cmd ;
+        raise (External_command_denied request)
 
-let authorize_external_command command exact =
+let authorize_external_command request command exact =
   let command = prepare_external_command command exact in
-  authorize_prepared_external_command command ;
-  { command }
+  authorize_prepared_external_command request command ;
+  { command ; request }
 
 let execute_authorized_external_command authorized =
   let cmd = authorized.command in
@@ -725,9 +852,9 @@ let execute_authorized_external_command authorized =
     end else Unix.system cmd
   in ret
 
-let exec_command command exact =
+let exec_command request command exact =
   execute_authorized_external_command
-    (authorize_external_command command exact)
+    (authorize_external_command request command exact)
 
 type execute_at_exit_type =
 | Command of authorized_external_command
@@ -735,12 +862,17 @@ type execute_at_exit_type =
 
 let execute_at_exit = ref ([] : (execute_at_exit_type) list)
 
-let enqueue_external_command command exact =
-  let candidate = { command = prepare_external_command command exact } in
-  if List.mem (Command candidate) !execute_at_exit then
+let enqueue_external_command request command exact =
+  let candidate = {
+      command = prepare_external_command command exact ;
+      request ;
+    } in
+  if List.exists (function
+    | Command queued -> queued.command = candidate.command
+    | Fn _ -> false) !execute_at_exit then
     ()
   else begin
-    authorize_prepared_external_command candidate.command ;
+    authorize_prepared_external_command request candidate.command ;
     execute_at_exit := (Command candidate) :: !execute_at_exit
   end
 
