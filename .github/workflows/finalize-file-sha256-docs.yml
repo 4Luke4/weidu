@@ -1,0 +1,80 @@
+name: Finalize FILE_SHA256 documentation
+
+on:
+  push:
+    branches:
+      - agent/add-file-sha256
+    paths:
+      - .github/workflows/finalize-file-sha256-docs.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update-docs:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/add-file-sha256
+
+      - name: Finalize TeX documentation
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("doc/base.tex")
+          text = path.read_text(encoding="utf-8")
+
+          old_inline = r'''    on fileName (such as \ttref{FILE_EXISTS}, \ttref{FILE_MD5} or
+              \ttref{FILE_SIZE}) are undefined.'''
+          new_inline = r'''    on fileName (such as \ttref{FILE_EXISTS}, \ttref{FILE_MD5},
+              \ttref{FILE_SHA256} or \ttref{FILE_SIZE}) are undefined.'''
+
+          old_predicates = r'''or & \DEFINE{FILE_MD5} fileName md5sum & Evaluates to 1 if the file exists
+          and has the given MD5 checksum. Evaluates to 0 otherwise. The discovered
+          checksum is printed to the log. MD5 is cryptographically unreliable and
+          must not be used when collision resistance matters; mod authors are encouraged
+          to use \ttref{FILE_SHA256} for new checksum comparisons. If the file does not
+          exist, it evaluates to 0. \\
+          or & \DEFINE{FILE_SHA256} fileName sha256sum & Evaluates to 1 if the file
+          exists and has the given SHA-256 checksum. Evaluates to 0 otherwise. The
+          discovered checksum is printed to the log. SHA-256 is the recommended
+          predicate for cryptographically reliable file checksum comparisons. If the
+          file does not exist, it evaluates to 0. \\'''
+          new_predicates = r'''or & \DEFINE{FILE_MD5} fileName md5sum & Evaluates to 1 if the file exists
+          and has the given MD5 checksum. Evaluates to 0 otherwise. MD5 is
+          cryptographically unreliable and must not be used where collision resistance
+          matters. Mod authors are strongly encouraged to use \ttref{FILE_SHA256} for
+          new checksum checks. The discovered checksum is printed to the log. If the
+          file does not exist, it evaluates to 0. \\
+          or & \DEFINE{FILE_SHA256} fileName sha256sum & Evaluates to 1 if the file
+          exists and has the given SHA-256 checksum. Evaluates to 0 otherwise. The
+          hexadecimal checksum comparison is case-insensitive, and the discovered
+          checksum is printed to the log. If the file does not exist, it evaluates to
+          0. This predicate is recommended instead of \ttref{FILE_MD5} for new checksum
+          checks. \\'''
+
+          for old, new, label in (
+              (old_inline, new_inline, "inlined-file predicate list"),
+              (old_predicates, new_predicates, "checksum predicate documentation"),
+          ):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one {label}, found {count}")
+              text = text.replace(old, new)
+
+          path.write_text(text, encoding="utf-8")
+
+      - name: Verify and commit
+        run: |
+          grep -F '\DEFINE{FILE_SHA256} fileName sha256sum' doc/base.tex
+          grep -F 'cryptographically unreliable' doc/base.tex
+          grep -F '\ttref{FILE_SHA256} or \ttref{FILE_SIZE}' doc/base.tex
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/finalize-file-sha256-docs.yml
+          git add doc/base.tex
+          git commit -m "Document FILE_SHA256 predicate"
+          git push origin HEAD:agent/add-file-sha256
