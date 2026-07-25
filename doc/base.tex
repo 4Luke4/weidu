@@ -4000,8 +4000,8 @@ or & \DEFINE{ACTION_REINCLUDE} \t{\ttref{String}} \Slist &
     that fileName is a real file with contents fileBody. This allows you to
     define \t{inlined} files inside your TP2 file. Such definitions
     must be executed before the \ttref{inlined} file is used. Other operations
-    on fileName (such as \ttref{FILE_EXISTS}, \ttref{FILE_MD5} or
-    \ttref{FILE_SIZE}) are undefined. Inlined files will be skipped by
+    on fileName (such as \ttref{FILE_EXISTS}, \ttref{FILE_MD5},
+    \ttref{FILE_SHA256} or \ttref{FILE_SIZE}) are undefined. Inlined files will be skipped by
     \ttref{COPY_EXISTING_REGEXP} and other ``wildcard'' approaches: you
     must name them directly. Unlike most other WeiDU things,
     spacing matters here. After the initial \t{<<<<<<<<} there can be
@@ -5885,10 +5885,17 @@ exists as a game resource and has non-zero size. Evaluates to 0 otherwise.
 manner. Evaluates to 0 for a file that does not exist but has been
 \ttref{ALLOW_MISSING}'d.\\
 or & \DEFINE{FILE_MD5} fileName md5sum & Evaluates to 1 if the file exists
-and has the given MD5 checksum. Evaluates to 0 otherwise. Two different
-files are exceptionally unlikely to have the same MD5 checksum. In any
-event, the discovered checksum is printed to the log. If the file does not
-exist, it evaluates to 0. \\
+and has the given MD5 checksum. Evaluates to 0 otherwise. MD5 is
+cryptographically unreliable and must not be used where collision resistance
+matters. Mod authors are strongly encouraged to use \ttref{FILE_SHA256} for
+new checksum checks. The discovered checksum is printed to the log. If the
+file does not exist, it evaluates to 0. \\
+or & \DEFINE{FILE_SHA256} fileName sha256sum & Evaluates to 1 if the file
+exists and has the given SHA-256 checksum. Evaluates to 0 otherwise. The
+hexadecimal checksum comparison is case-insensitive, and the discovered
+checksum is printed to the log. If the file does not exist, it evaluates to
+0. This predicate is recommended instead of \ttref{FILE_MD5} for new checksum
+checks. \\
 or & \DEFINE{FILE_IS_IN_COMPRESSED_BIFF} fileName & Evaluates to 1 if the file
 is stored in a compressed biff (ignoring copies in the override). Evaluates to
 0 otherwise (the file is not in a biff, or it is in an uncompressed biff).
