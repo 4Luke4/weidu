@@ -28,7 +28,7 @@ all : weidu
 # "make weinstall" if you want weinstall
 
 test-security: weidu
-	test/security/run_tests.sh ./weidu
+	test/security/run_tests.sh ./weidu$(EXE)
 
 ####
 #### OCAML stuff
