@@ -40,6 +40,7 @@ jobs:
           opam switch
           eval $(opam env)
           make
+          make test-security
           make osx_zip
       - uses: actions/upload-artifact@v6
         with:
@@ -69,6 +70,7 @@ jobs:
           opam switch
           eval $(opam env)
           make
+          make test-security
           make linux_zip
       - uses: actions/upload-artifact@v6
         with:
