@@ -38,6 +38,17 @@ run_install() {
   )
 }
 
+require_denial_message() {
+  local output=$1
+  local description=$2
+  if grep -Fq "FILE ACCESS DENIED" "$output"; then
+    return
+  fi
+  printf 'captured WeiDU output follows:\n' >&2
+  sed -n '1,200p' "$output" >&2
+  fail "$description"
+}
+
 mkdir -p "$test_root/outside" "$test_root/read-denied"
 printf 'protected\n' > "$test_root/outside/marker"
 write_tp2 "$test_root/read-denied/test.tp2" \
@@ -46,8 +57,8 @@ if run_install "$test_root/read-denied" test.tp2 \
     >"$test_root/read-denied/output" 2>&1; then
   fail "an out-of-root read was accepted"
 fi
-grep -q "FILE ACCESS DENIED" "$test_root/read-denied/output" ||
-  fail "the read denial was not reported clearly"
+require_denial_message "$test_root/read-denied/output" \
+  "the read denial was not reported clearly"
 [[ ! -e "$test_root/read-denied/copied-marker" ]] ||
   fail "the denied read produced an output file"
 
@@ -58,8 +69,8 @@ if run_install "$test_root/write-denied" --continue test.tp2 \
     >"$test_root/write-denied/output" 2>&1; then
   fail "--continue suppressed an authority denial"
 fi
-grep -q "FILE ACCESS DENIED" "$test_root/write-denied/output" ||
-  fail "the write denial was not reported clearly"
+require_denial_message "$test_root/write-denied/output" \
+  "the write denial was not reported clearly"
 [[ -f "$test_root/outside/marker" ]] ||
   fail "the out-of-root file was deleted"
 
@@ -71,8 +82,8 @@ if run_install "$test_root/symlink-denied" test.tp2 \
     >"$test_root/symlink-denied/output" 2>&1; then
   fail "a symlink escape was accepted"
 fi
-grep -q "FILE ACCESS DENIED" "$test_root/symlink-denied/output" ||
-  fail "the symlink denial was not reported clearly"
+require_denial_message "$test_root/symlink-denied/output" \
+  "the symlink denial was not reported clearly"
 [[ -f "$test_root/outside/marker" ]] ||
   fail "the symlink target was deleted"
 
