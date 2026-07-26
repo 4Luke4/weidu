@@ -38,6 +38,15 @@ run_install() {
   )
 }
 
+run_uninstall() {
+  local directory=$1
+  shift
+  (
+    cd "$directory"
+    "$weidu" --nogame --yes --no-exit-pause --force-uninstall 0 "$@"
+  )
+}
+
 require_denial_message() {
   local output=$1
   local description=$2
@@ -87,6 +96,20 @@ require_denial_message "$test_root/symlink-denied/output" \
 [[ -f "$test_root/outside/marker" ]] ||
   fail "the symlink target was deleted"
 
+mkdir -p "$test_root/action-try"
+write_tp2 "$test_root/action-try/test.tp2" \
+  $'ACTION_TRY\n  DELETE ~../outside/marker~\nWITH\n  DEFAULT\n    COPY ~test.tp2~ ~caught-marker~\nEND'
+if run_install "$test_root/action-try" test.tp2 \
+    >"$test_root/action-try/output" 2>&1; then
+  fail "ACTION_TRY suppressed an authority denial"
+fi
+require_denial_message "$test_root/action-try/output" \
+  "the ACTION_TRY denial was not reported clearly"
+[[ -f "$test_root/outside/marker" ]] ||
+  fail "ACTION_TRY allowed the out-of-root file to be deleted"
+[[ ! -e "$test_root/action-try/caught-marker" ]] ||
+  fail "ACTION_TRY continued after an authority denial"
+
 mkdir -p "$test_root/explicit-root"
 write_tp2 "$test_root/explicit-root/test.tp2" \
   'DELETE ~../outside/marker~'
@@ -96,6 +119,31 @@ run_install "$test_root/explicit-root" \
   fail "an explicitly authorized root was rejected"
 [[ ! -e "$test_root/outside/marker" ]] ||
   fail "the explicitly authorized delete did not run"
+
+mkdir -p "$test_root/uninstall-preflight"
+printf 'source\n' > "$test_root/uninstall-preflight/source"
+write_tp2 "$test_root/uninstall-preflight/test.tp2" \
+  'COPY ~source~ ~installed~'
+run_install "$test_root/uninstall-preflight" test.tp2 \
+  >"$test_root/uninstall-preflight/install-output" 2>&1 ||
+  fail "the uninstall preflight fixture could not be installed"
+uninstall_metadata="$test_root/uninstall-preflight/backup/0/UNINSTALL.0"
+[[ -f "$uninstall_metadata" ]] ||
+  fail "the uninstall preflight fixture did not create metadata"
+printf '../outside/marker\n' > "$uninstall_metadata"
+printf 'protected\n' > "$test_root/outside/marker"
+if run_uninstall "$test_root/uninstall-preflight" test.tp2 \
+    >"$test_root/uninstall-preflight/uninstall-output" 2>&1; then
+  fail "out-of-root uninstall metadata was accepted"
+fi
+require_denial_message "$test_root/uninstall-preflight/uninstall-output" \
+  "the uninstall metadata denial was not reported clearly"
+[[ -f "$test_root/outside/marker" ]] ||
+  fail "uninstall metadata deleted the out-of-root file"
+[[ -f "$test_root/uninstall-preflight/installed" ]] ||
+  fail "uninstall mutated files before authority preflight completed"
+[[ -f "$uninstall_metadata" ]] ||
+  fail "uninstall removed metadata before authority preflight completed"
 
 if [[ $(uname -s) == Linux ]]; then
   mkdir -p "$test_root/autoupdate"
@@ -109,6 +157,19 @@ if [[ $(uname -s) == Linux ]]; then
   } > "$test_root/autoupdate/hostile.c"
   "${CC:-cc}" "$test_root/autoupdate/hostile.c" \
     -o "$test_root/autoupdate/setup-hostile"
+  {
+    printf '#include <stdio.h>\n'
+    printf 'static const char version_marker[] = '
+    printf '"\\0WEIDU_AUTOUPDATE_VERSION:999999\\0";\n'
+    printf 'int main(void) { FILE *f = fopen("executed-newer", "wb"); '
+    printf 'if (f != NULL) fclose(f); '
+    printf 'fwrite(version_marker, 1, sizeof version_marker, stdout); '
+    printf 'return 0; }\n'
+  } > "$test_root/autoupdate/hostile-newer.c"
+  "${CC:-cc}" "$test_root/autoupdate/hostile-newer.c" \
+    -o "$test_root/autoupdate/setup-newer"
+  cp "$test_root/autoupdate/setup-newer" \
+    "$test_root/autoupdate/newer.expected"
   (
     cd "$test_root/autoupdate"
     ./weidu --update-all >output 2>&1
@@ -121,6 +182,11 @@ if [[ $(uname -s) == Linux ]]; then
   cmp -s "$test_root/autoupdate/weidu" \
     "$test_root/autoupdate/setup-peer" ||
     fail "the marked peer was not replaced from the running binary"
+  [[ ! -e "$test_root/autoupdate/executed-newer" ]] ||
+    fail "auto-update executed a newer sibling setup binary"
+  cmp -s "$test_root/autoupdate/newer.expected" \
+    "$test_root/autoupdate/setup-newer" ||
+    fail "the newer marked sibling was overwritten"
 fi
 
 echo "security regression tests passed"
