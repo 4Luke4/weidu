@@ -33,7 +33,7 @@ jobs:
       - name: Fetch Elkhound
         run: |
           set -euxo pipefail
-          mkdir -p bin
+          mkdir -p bin validation/results
           curl --fail --location --retry 5 \
             https://github.com/The-Mod-Elephant/elkhound/releases/download/1.0.3/lin-elkhound \
             --output bin/elkhound
@@ -46,16 +46,24 @@ jobs:
           ocaml-compiler: ocaml-variants.4.14.2+options,ocaml-option-default-unsafe-string
 
       - name: Build WeiDU
+        id: build
+        continue-on-error: true
         run: |
-          set -euxo pipefail
+          set -uo pipefail
           export PATH="$PATH:$PWD/bin"
-          mkdir -p obj/x86_LINUX obj/.depend
-          opam switch
+          mkdir -p obj/x86_LINUX obj/.depend validation/results
+          opam switch 2>&1 | tee validation/results/opam-switch.txt
           eval "$(opam env)"
-          make
-          ./weidu --version
+          make 2>&1 | tee validation/results/build.log
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [[ "$status" -eq 0 ]]; then
+            ./weidu --version 2>&1 | tee validation/results/version.txt
+          fi
+          exit "$status"
 
       - name: Download and inspect issue fixture
+        if: steps.build.outputs.status == '0'
         run: |
           set -euxo pipefail
           mkdir -p validation/game validation/results
@@ -75,11 +83,11 @@ jobs:
           ' sh {} + | tee validation/results/tp2-sources.txt
 
       - name: Run issue 342 installation chain
+        if: steps.build.outputs.status == '0'
         id: reproduce
         shell: bash
         run: |
           set -uo pipefail
-
           root="$PWD"
           game="$root/validation/game"
           results="$root/validation/results"
@@ -102,7 +110,6 @@ jobs:
           mod1="$(find_tp2 1)" || exit 1
           mod2="$(find_tp2 2)" || exit 1
           mod3="$(find_tp2 3)" || exit 1
-
           printf 'MOD1=%s\nMOD2=%s\nMOD3=%s\n' \
             "$mod1" "$mod2" "$mod3" | tee "$results/resolved-mods.txt"
 
@@ -112,12 +119,8 @@ jobs:
             echo "===== $label =====" | tee -a "$results/run.log"
             (
               cd "$game"
-              ./weidu \
-                --noautoupdate \
-                --no-exit-pause \
-                --nogame \
-                --force-install 0 \
-                "${tp2#$game/}"
+              ./weidu --noautoupdate --no-exit-pause --nogame \
+                --force-install 0 "${tp2#$game/}"
             ) 2>&1 | tee -a "$results/run.log"
             local status=${PIPESTATUS[0]}
             echo "STATUS[$label]=$status" | tee -a "$results/run.log"
@@ -140,27 +143,24 @@ jobs:
                 echo
               done
             ' sh {} + | tee "$results/debug-logs.txt"
-
           grep -Ein 'error|fail|leak|variable|re-install|temporarily' \
             "$results/run.log" "$results/debug-logs.txt" \
             | tee "$results/highlights.txt" || true
-
           echo "command_status=$status" >> "$GITHUB_OUTPUT"
           exit 0
 
       - name: Upload validation evidence
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: issue-342-${{ matrix.label }}
           path: validation
           if-no-files-found: error
 
-      - name: Summarize command status
+      - name: Fail if build or reproduction failed
+        if: always()
         run: |
-          echo "### ${{ matrix.label }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "WeiDU command status: ${{ steps.reproduce.outputs.command_status }}" \
-            >> "$GITHUB_STEP_SUMMARY"
-          echo '```text' >> "$GITHUB_STEP_SUMMARY"
-          tail -n 120 validation/results/highlights.txt \
-            >> "$GITHUB_STEP_SUMMARY" || true
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "Build status: ${{ steps.build.outputs.status }}"
+          echo "Reproduction status: ${{ steps.reproduce.outputs.command_status }}"
+          test "${{ steps.build.outputs.status }}" = "0"
+          test "${{ steps.reproduce.outputs.command_status }}" = "0"
