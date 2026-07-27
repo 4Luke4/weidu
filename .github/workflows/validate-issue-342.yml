@@ -43,7 +43,7 @@ jobs:
       - name: Set up OCaml
         uses: ocaml/setup-ocaml@v3.5.1
         with:
-          ocaml-compiler: 4.08.1+default-unsafe-string
+          ocaml-compiler: ocaml-variants.4.14.2+options,ocaml-option-default-unsafe-string
 
       - name: Build WeiDU
         run: |
