@@ -48,7 +48,7 @@ jobs:
           make 2>&1 | tee validation/results/build.log
           status=${PIPESTATUS[0]}
           echo "status=$status" >> "$GITHUB_OUTPUT"
-          if [[ "$status" -eq 0 ]]; then ./weidu --version | tee validation/results/version.txt; fi
+          if [[ "$status" -eq 0 ]]; then obj/x86_LINUX/weidu --version | tee validation/results/version.txt; fi
           exit "$status"
       - name: Download fixture
         if: steps.build.outputs.status == '0'
@@ -72,7 +72,7 @@ jobs:
           mkdir -p "$results"
           exec > >(tee -a "$results/bootstrap.log") 2>&1
           set -xuo pipefail
-          cp "$root/weidu" "$game/weidu"
+          cp "$root/obj/x86_LINUX/weidu" "$game/weidu"
           chmod +x "$game/weidu"
           find_tp2() {
             local mod="$1"
