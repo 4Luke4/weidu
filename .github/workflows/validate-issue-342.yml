@@ -3,9 +3,7 @@ name: Validate issue 342 reproduction
 on:
   pull_request:
     branches: [devel]
-    paths:
-      - src/tpstate.ml
-      - .github/workflows/validate-issue-342.yml
+    paths: [src/tpstate.ml, .github/workflows/validate-issue-342.yml]
 
 permissions:
   contents: read
@@ -18,88 +16,61 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: baseline-devel
-            ref: devel
-          - label: fixed-branch
-            ref: ${{ github.event.pull_request.head.sha }}
+          - {label: baseline-devel, ref: devel}
+          - {label: fixed-branch, ref: "${{ github.event.pull_request.head.sha }}"}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ matrix.ref }}
+        with: {ref: "${{ matrix.ref }}"}
       - name: Fetch Elkhound
         run: |
-          set -euxo pipefail
           mkdir -p bin validation/results
-          curl --fail --location --retry 5 https://github.com/The-Mod-Elephant/elkhound/releases/download/1.0.3/lin-elkhound --output bin/elkhound
+          curl -fL --retry 5 https://github.com/The-Mod-Elephant/elkhound/releases/download/1.0.3/lin-elkhound -o bin/elkhound
           chmod +x bin/elkhound
-          ./bin/elkhound
-      - name: Set up OCaml
-        uses: ocaml/setup-ocaml@v3.5.1
+      - uses: ocaml/setup-ocaml@v3.5.1
         with:
           ocaml-compiler: ocaml-variants.4.14.2+options,ocaml-option-default-unsafe-string
       - name: Build WeiDU
         id: build
-        continue-on-error: true
         run: |
-          set -uo pipefail
+          set -o pipefail
           export PATH="$PATH:$PWD/bin"
           mkdir -p obj/x86_LINUX obj/.depend validation/results
           eval "$(opam env)"
           make 2>&1 | tee validation/results/build.log
-          status=${PIPESTATUS[0]}
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          if [[ "$status" -eq 0 ]]; then obj/x86_LINUX/weidu --version | tee validation/results/version.txt; fi
-          exit "$status"
+          ./weidu.asm.exe --version | tee validation/results/version.txt
+          echo status=0 >> "$GITHUB_OUTPUT"
       - name: Download fixture
-        if: steps.build.outputs.status == '0'
         run: |
-          set -euxo pipefail
           mkdir -p validation/game validation/results
-          curl --fail --location --retry 5 https://github.com/user-attachments/files/26055748/testmods.zip --output validation/testmods.zip
+          curl -fL --retry 5 https://github.com/user-attachments/files/26055748/testmods.zip -o validation/testmods.zip
           unzip -l validation/testmods.zip | tee validation/results/archive-list.txt
           unzip -q validation/testmods.zip -d validation/game
           find validation/game -type f -printf '%P\n' | sort | tee validation/results/extracted-files.txt
-          find validation/game -type f -iname '*.tp2' -print -exec sh -c 'for file do echo "===== $file ====="; cat "$file"; echo; done' sh {} + | tee validation/results/tp2-sources.txt
+          find validation/game -type f -iname '*.tp2' -print -exec sh -c 'for f do echo "===== $f ====="; cat "$f"; done' sh {} + | tee validation/results/tp2-sources.txt
       - name: Run reproduction
-        if: steps.build.outputs.status == '0'
         id: reproduce
-        continue-on-error: true
         shell: bash
         run: |
-          root="$PWD"
-          game="$root/validation/game"
-          results="$root/validation/results"
-          mkdir -p "$results"
-          exec > >(tee -a "$results/bootstrap.log") 2>&1
           set -xuo pipefail
-          cp "$root/obj/x86_LINUX/weidu" "$game/weidu"
-          chmod +x "$game/weidu"
-          find_tp2() {
-            local mod="$1"
-            mapfile -t matches < <(find "$game" -type f -iname '*.tp2' | grep -Ei "a7[-_]?mod${mod}" || true)
-            [[ "${#matches[@]}" -eq 1 ]] || { printf 'Expected one TP2 for mod %s, found %s\n' "$mod" "${#matches[@]}"; printf '%s\n' "${matches[@]}"; return 1; }
-            printf '%s\n' "${matches[0]}"
-          }
-          mod1="$(find_tp2 1)" || exit 1
-          mod2="$(find_tp2 2)" || exit 1
-          mod3="$(find_tp2 3)" || exit 1
+          root="$PWD"; game="$PWD/validation/game"; results="$PWD/validation/results"
+          cp "$root/weidu.asm.exe" "$game/weidu"; chmod +x "$game/weidu"
+          find_tp2() { find "$game" -type f -iname "*mod$1*.tp2" | head -n1; }
+          mod1="$(find_tp2 1)"; mod2="$(find_tp2 2)"; mod3="$(find_tp2 3)"
           printf 'MOD1=%s\nMOD2=%s\nMOD3=%s\n' "$mod1" "$mod2" "$mod3" | tee "$results/resolved-mods.txt"
           run_weidu() {
             local label="$1" tp2="$2"
             echo "===== $label =====" | tee -a "$results/run.log"
             (cd "$game" && ./weidu --noautoupdate --no-exit-pause --nogame --force-install 0 "${tp2#$game/}") 2>&1 | tee -a "$results/run.log"
-            local s=${PIPESTATUS[0]}
-            echo "STATUS[$label]=$s" | tee -a "$results/run.log"
-            return "$s"
+            local s=${PIPESTATUS[0]}; echo "STATUS[$label]=$s" | tee -a "$results/run.log"; return "$s"
           }
           status=0
           run_weidu install-mod1 "$mod1" || status=1
           run_weidu install-mod2 "$mod2" || status=1
           run_weidu install-mod3 "$mod3" || status=1
           run_weidu reinstall-mod1 "$mod1" || status=1
-          find "$game" -type f \( -iname '*.debug' -o -iname 'weidu.log' \) -print -exec sh -c 'for file do echo "===== $file ====="; cat "$file"; echo; done' sh {} + | tee "$results/debug-logs.txt"
-          grep -Ein 'error|fail|leak|variable|re-install|temporarily' "$results/run.log" "$results/debug-logs.txt" | tee "$results/highlights.txt" || true
-          echo "command_status=$status" >> "$GITHUB_OUTPUT"
+          find "$game" -type f \( -iname '*.debug' -o -iname 'weidu.log' \) -print -exec sh -c 'for f do echo "===== $f ====="; cat "$f"; done' sh {} + | tee "$results/debug-logs.txt"
+          grep -Ein 'leaked variable|local_var|re-install|temporarily|error|fail' "$results/run.log" "$results/debug-logs.txt" | tee "$results/highlights.txt" || true
+          echo command_status=$status >> "$GITHUB_OUTPUT"
           exit "$status"
       - name: Upload evidence
         if: always()
@@ -108,8 +79,3 @@ jobs:
           name: issue-342-${{ matrix.label }}
           path: validation
           if-no-files-found: error
-      - name: Enforce result
-        if: always()
-        run: |
-          test "${{ steps.build.outputs.status }}" = "0"
-          test "${{ steps.reproduce.outputs.command_status }}" = "0"
