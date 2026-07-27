@@ -390,7 +390,7 @@ let sprintf_log game handle_tp2_filename get_tra_list_filename log
             in
             let version = get_version tp2.flags in
             Dc.clear_state () ;
-            Dc.pop_trans () ;
+            Dc.pop_trans ();
             Var.var_pop () ;
             (comp_str, subcomp_str,version)
           with _ ->
