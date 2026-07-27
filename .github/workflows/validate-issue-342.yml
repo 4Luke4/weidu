@@ -1,0 +1,166 @@
+name: Validate issue 342 reproduction
+
+on:
+  pull_request:
+    branches:
+      - devel
+    paths:
+      - src/tpstate.ml
+      - .github/workflows/validate-issue-342.yml
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    name: ${{ matrix.label }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: baseline-devel
+            ref: devel
+          - label: fixed-branch
+            ref: ${{ github.event.pull_request.head.sha }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
+
+      - name: Fetch Elkhound
+        run: |
+          set -euxo pipefail
+          mkdir -p bin
+          curl --fail --location --retry 5 \
+            https://github.com/The-Mod-Elephant/elkhound/releases/download/1.0.3/lin-elkhound \
+            --output bin/elkhound
+          chmod +x bin/elkhound
+          ./bin/elkhound
+
+      - name: Set up OCaml
+        uses: ocaml/setup-ocaml@v3.5.1
+        with:
+          ocaml-compiler: 4.08.1+default-unsafe-string
+
+      - name: Build WeiDU
+        run: |
+          set -euxo pipefail
+          export PATH="$PATH:$PWD/bin"
+          mkdir -p obj/x86_LINUX obj/.depend
+          opam switch
+          eval "$(opam env)"
+          make
+          ./weidu --version
+
+      - name: Download and inspect issue fixture
+        run: |
+          set -euxo pipefail
+          mkdir -p validation/game validation/results
+          curl --fail --location --retry 5 \
+            https://github.com/user-attachments/files/26055748/testmods.zip \
+            --output validation/testmods.zip
+          unzip -l validation/testmods.zip | tee validation/results/archive-list.txt
+          unzip -q validation/testmods.zip -d validation/game
+          find validation/game -maxdepth 5 -type f -printf '%P\n' \
+            | sort | tee validation/results/extracted-files.txt
+          find validation/game -type f -iname '*.tp2' -print -exec sh -c '
+            for file do
+              echo "===== $file ====="
+              cat "$file"
+              echo
+            done
+          ' sh {} + | tee validation/results/tp2-sources.txt
+
+      - name: Run issue 342 installation chain
+        id: reproduce
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          root="$PWD"
+          game="$root/validation/game"
+          results="$root/validation/results"
+          cp "$root/weidu" "$game/weidu"
+          chmod +x "$game/weidu"
+
+          find_tp2() {
+            local mod="$1"
+            mapfile -t matches < <(find "$game" -type f -iname '*.tp2' \
+              | grep -Ei "a7[-_]?mod${mod}" || true)
+            if [[ "${#matches[@]}" -ne 1 ]]; then
+              printf 'Expected exactly one TP2 for A7-MOD%s; found %s\n' \
+                "$mod" "${#matches[@]}" | tee -a "$results/run.log"
+              printf '%s\n' "${matches[@]}" | tee -a "$results/run.log"
+              return 1
+            fi
+            printf '%s\n' "${matches[0]}"
+          }
+
+          mod1="$(find_tp2 1)" || exit 1
+          mod2="$(find_tp2 2)" || exit 1
+          mod3="$(find_tp2 3)" || exit 1
+
+          printf 'MOD1=%s\nMOD2=%s\nMOD3=%s\n' \
+            "$mod1" "$mod2" "$mod3" | tee "$results/resolved-mods.txt"
+
+          run_weidu() {
+            local label="$1"
+            local tp2="$2"
+            echo "===== $label =====" | tee -a "$results/run.log"
+            (
+              cd "$game"
+              ./weidu \
+                --noautoupdate \
+                --no-exit-pause \
+                --nogame \
+                --force-install 0 \
+                "${tp2#$game/}"
+            ) 2>&1 | tee -a "$results/run.log"
+            local status=${PIPESTATUS[0]}
+            echo "STATUS[$label]=$status" | tee -a "$results/run.log"
+            return "$status"
+          }
+
+          status=0
+          run_weidu install-mod1 "$mod1" || status=1
+          run_weidu install-mod2 "$mod2" || status=1
+          run_weidu install-mod3 "$mod3" || status=1
+          run_weidu reinstall-mod1 "$mod1" || status=1
+
+          find "$game" -maxdepth 6 -type f -printf '%P\n' \
+            | sort | tee "$results/final-files.txt"
+          find "$game" -type f \( -iname '*.debug' -o -iname 'weidu.log' \) \
+            -print -exec sh -c '
+              for file do
+                echo "===== $file ====="
+                cat "$file"
+                echo
+              done
+            ' sh {} + | tee "$results/debug-logs.txt"
+
+          grep -Ein 'error|fail|leak|variable|re-install|temporarily' \
+            "$results/run.log" "$results/debug-logs.txt" \
+            | tee "$results/highlights.txt" || true
+
+          echo "command_status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload validation evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: issue-342-${{ matrix.label }}
+          path: validation
+          if-no-files-found: error
+
+      - name: Summarize command status
+        run: |
+          echo "### ${{ matrix.label }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "WeiDU command status: ${{ steps.reproduce.outputs.command_status }}" \
+            >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          tail -n 120 validation/results/highlights.txt \
+            >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
