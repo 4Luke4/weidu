@@ -39,6 +39,13 @@ let conf : (string, string) Hashtbl.t ref = ref (Hashtbl.create 5)
 
 exception Abort of string
 
+type tp_control_flow =
+  | TP_ControlBreak
+  | TP_ControlActionGoto of string
+  | TP_ControlPatchGoto of string
+
+exception Control_flow of tp_control_flow * string option
+
 type tp_flag =
   | Version of Dlg.tlk_string
   | Auto_Tra of string * string option
@@ -145,6 +152,9 @@ and tp_cache_arg =
 | TP_Cache
 
 and tp_action =
+  | TP_ActionBreak
+  | TP_ActionGoto of string
+  | TP_ActionLabel of string
   | TP_ActionBashFor of ((string * (bool option) * string) list) * (tp_action list)
   | TP_ActionDefineArray of tp_pe_string * string list
   | TP_ActionSortArrayIndices of tp_pe_string * array_indices_sort_type
@@ -332,6 +342,9 @@ and tp_local_declaration =
   | TP_LocalTextSprint of tp_pe_string * tp_pe_string
 
 and tp_patch =
+  | TP_PatchBreak
+  | TP_PatchGoto of string
+  | TP_PatchLabel of string
   | TP_PatchBashFor of ((string * (bool option) * string) list) * (tp_patch list)
   | TP_PatchClearArray of tp_pe_string
   | TP_PatchDefineArray of tp_pe_string * string list
@@ -589,6 +602,291 @@ let get_pe_string a_string =
 
 let get_pe_tlk_string a_string =
   PE_Pe(get_pe_string a_string)
+
+let validate_control_label kind label =
+  if label = "" then
+    parse_error (Printf.sprintf "%s control-flow labels cannot be empty" kind)
+
+let control_labels kind get_label statements =
+  let seen = Hashtbl.create 17 in
+  List.fold_left
+    (fun labels statement ->
+      match get_label statement with
+      | None -> labels
+      | Some label ->
+          validate_control_label kind label;
+          if Hashtbl.mem seen label then
+            parse_error
+              (Printf.sprintf
+                 "Duplicate %s control-flow label %S in the same block"
+                 kind label);
+          Hashtbl.add seen label ();
+          label :: labels)
+    [] statements
+
+let rec validate_action_control_block outer_labels loop_depth actions =
+  let labels =
+    control_labels "action"
+      (function TP_ActionLabel label -> Some label | _ -> None)
+      actions
+  in
+  let visible_labels = labels @ outer_labels in
+  List.iter (validate_action_control visible_labels loop_depth) actions
+
+and validate_action_control visible_labels loop_depth = function
+  | TP_ActionBreak ->
+      if loop_depth = 0 then
+        parse_error "Action BREAK is not inside an action loop"
+  | TP_ActionGoto label ->
+      validate_control_label "action" label;
+      if not (List.mem label visible_labels) then
+        parse_error
+          (Printf.sprintf "Action GOTO has no visible label named %S" label)
+  | TP_ActionLabel _ -> ()
+  | TP_ActionBashFor (_, body)
+  | TP_ActionPHPEach (_, _, _, body)
+  | TP_Action_For_Each (_, _, body)
+  | TP_Outer_While (_, body) ->
+      validate_action_control_block visible_labels (loop_depth + 1) body
+  | TP_Outer_For (initialise, _, increment, body) ->
+      validate_patch_control_block [] 0 initialise;
+      validate_patch_control_block [] 1 increment;
+      validate_action_control_block visible_labels (loop_depth + 1) body
+  | TP_If (_, when_true, when_false) ->
+      validate_action_control_block visible_labels loop_depth when_true;
+      validate_action_control_block visible_labels loop_depth when_false
+  | TP_ActionTry (body, handlers) ->
+      validate_action_control_block visible_labels loop_depth body;
+      List.iter
+        (fun (_, _, handler) ->
+          validate_action_control_block visible_labels loop_depth handler)
+        handlers
+  | TP_ActionMatch (_, cases) ->
+      List.iter
+        (fun (_, _, body) ->
+          validate_action_control_block visible_labels loop_depth body)
+        cases
+  | TP_WithTra (_, body)
+  | TP_WithVarScope body
+  | TP_ActionTime (_, body) ->
+      validate_action_control_block visible_labels loop_depth body
+  | TP_Define_Action_Macro (_, _, body)
+  | TP_Define_Action_Function (_, _, _, _, _, body)
+  | TP_Define_Dimorphic_Function (_, _, _, _, _, body) ->
+      validate_action_control_block [] 0 body
+  | TP_Define_Patch_Macro (_, _, body)
+  | TP_Define_Patch_Function (_, _, _, _, _, body)
+  | TP_CopyAllGamFiles (body, _)
+  | TP_CopyRandom (_, body, _)
+  | TP_Compile (_, _, body, _)
+  | TP_Outer_Inner_Buff (_, body)
+  | TP_Outer_Inner_Buff_Save (_, _, body)
+  | TP_Extend_Top (_, _, _, body, _, _)
+  | TP_Extend_Bottom (_, _, _, body, _, _)
+  | TP_Alter_TLK body
+  | TP_Alter_TLK_Range (_, _, body)
+  | TP_Alter_TLK_List (_, body)
+  | TP_Create (_, _, _, body) ->
+      validate_patch_control_block [] 0 body
+  | TP_Copy args ->
+      validate_patch_control_block [] 0 args.copy_patch_list
+  | TP_Add_Spell (_, _, _, _, body, global_effects, memorisation_effects) ->
+      validate_patch_control_block [] 0 body;
+      Option.iter (validate_patch_control_block [] 0) global_effects;
+      Option.iter (validate_patch_control_block [] 0) memorisation_effects
+  | _ -> ()
+
+and validate_patch_control_block outer_labels loop_depth patches =
+  let labels =
+    control_labels "patch"
+      (function TP_PatchLabel label -> Some label | _ -> None)
+      patches
+  in
+  let visible_labels = labels @ outer_labels in
+  List.iter (validate_patch_control visible_labels loop_depth) patches
+
+and validate_patch_control visible_labels loop_depth = function
+  | TP_PatchBreak ->
+      if loop_depth = 0 then
+        parse_error "Patch BREAK is not inside a patch loop"
+  | TP_PatchGoto label ->
+      validate_control_label "patch" label;
+      if not (List.mem label visible_labels) then
+        parse_error
+          (Printf.sprintf "Patch GOTO has no visible label named %S" label)
+  | TP_PatchLabel _ -> ()
+  | TP_PatchBashFor (_, body)
+  | TP_PatchPHPEach (_, _, _, body)
+  | TP_PatchForEach (_, _, body)
+  | TP_PatchWhile (_, body) ->
+      validate_patch_control_block visible_labels (loop_depth + 1) body
+  | TP_PatchFor (initialise, _, increment, body) ->
+      validate_patch_control_block visible_labels loop_depth initialise;
+      validate_patch_control_block visible_labels (loop_depth + 1) body;
+      validate_patch_control_block visible_labels (loop_depth + 1) increment
+  | TP_PatchIf (_, when_true, when_false) ->
+      validate_patch_control_block visible_labels loop_depth when_true;
+      validate_patch_control_block visible_labels loop_depth when_false
+  | TP_PatchTry (body, handlers) ->
+      validate_patch_control_block visible_labels loop_depth body;
+      List.iter
+        (fun (_, _, handler) ->
+          validate_patch_control_block visible_labels loop_depth handler)
+        handlers
+  | TP_PatchMatch (_, cases) ->
+      List.iter
+        (fun (_, _, body) ->
+          validate_patch_control_block visible_labels loop_depth body)
+        cases
+  | TP_PatchReplaceBCSBlock (_, _, Some body, _, _)
+  | TP_PatchReplaceBCSBlockRE (_, _, Some body) ->
+      validate_patch_control_block visible_labels loop_depth body
+  | TP_PatchWithTra (_, body)
+  | TP_PatchWithVarScope body
+  | TP_PatchTime (_, body) ->
+      validate_patch_control_block visible_labels loop_depth body
+  | TP_PatchInnerAction body ->
+      validate_action_control_block [] 0 body
+  | TP_PatchStringEvaluate (_, _, body, _)
+  | TP_PatchInnerBuff (_, body)
+  | TP_PatchInnerBuffFile (_, body)
+  | TP_PatchInnerBuffSave (_, _, body)
+  | TP_PatchSavFile (_, _, _, body)
+  | TP_DecompileAndPatch body ->
+      validate_patch_control_block [] 0 body
+  | _ -> ()
+
+let validate_action_control_flow actions =
+  validate_action_control_block [] 0 actions
+
+let validate_patch_control_flow patches =
+  validate_patch_control_block [] 0 patches
+
+let validate_tp_control_flow tp =
+  List.iter
+    (function
+      | Always actions
+      | Define_Action_Macro (_, _, actions) ->
+          validate_action_control_flow actions
+      | Define_Patch_Macro (_, _, patches) ->
+          validate_patch_control_flow patches
+      | _ -> ())
+    tp.flags;
+  List.iter
+    (fun component -> validate_action_control_flow component.mod_parts)
+    tp.module_list
+
+let action_label_targets actions =
+  let targets = Hashtbl.create 17 in
+  let rec index = function
+    | [] -> ()
+    | TP_ActionLabel label :: tail ->
+        Hashtbl.replace targets label tail;
+        index tail
+    | _ :: tail -> index tail
+  in
+  index actions;
+  targets
+
+let process_action_list process_action tp actions =
+  let targets = ref None in
+  let find_target label =
+    let index =
+      match !targets with
+      | Some index -> index
+      | None ->
+          let index = action_label_targets actions in
+          targets := Some index;
+          index
+    in
+    try Some (Hashtbl.find index label)
+    with Not_found -> None
+  in
+  let rec execute remaining =
+    match remaining with
+    | [] -> ()
+    | action :: tail ->
+        let goto =
+          try
+            process_action tp action;
+            None
+          with
+          | Control_flow (TP_ControlActionGoto label, _) as control ->
+              Some (label, control)
+        in
+        (match goto with
+         | None -> execute tail
+         | Some (label, control) ->
+             match find_target label with
+             | Some target -> execute target
+             | None -> raise control)
+  in
+  execute actions
+
+let process_action_list_root process_action tp actions =
+  try process_action_list process_action tp actions with
+  | Control_flow (TP_ControlActionGoto label, _) ->
+      failwith (Printf.sprintf "Action GOTO escaped its scope: %S" label)
+  | Control_flow (TP_ControlPatchGoto label, _) ->
+      failwith (Printf.sprintf "Patch GOTO escaped its scope: %S" label)
+  | Control_flow (TP_ControlBreak, _) ->
+      failwith "BREAK escaped its enclosing loop"
+
+let patch_label_targets patches =
+  let targets = Hashtbl.create 17 in
+  let rec index = function
+    | [] -> ()
+    | TP_PatchLabel label :: tail ->
+        Hashtbl.replace targets label tail;
+        index tail
+    | _ :: tail -> index tail
+  in
+  index patches;
+  targets
+
+let process_patch_list process_patch patch_filename game buff patches =
+  let targets = ref None in
+  let find_target label =
+    let index =
+      match !targets with
+      | Some index -> index
+      | None ->
+          let index = patch_label_targets patches in
+          targets := Some index;
+          index
+    in
+    try Some (Hashtbl.find index label)
+    with Not_found -> None
+  in
+  let rec execute current_buff remaining =
+    match remaining with
+    | [] -> current_buff
+    | patch :: tail ->
+        let outcome =
+          try
+            `Buffer (process_patch patch_filename game current_buff patch)
+          with
+          | Control_flow
+              (TP_ControlPatchGoto label, Some transfer_buff) as control ->
+              `Goto (label, transfer_buff, control)
+        in
+        (match outcome with
+         | `Buffer next_buff -> execute next_buff tail
+         | `Goto (label, transfer_buff, control) ->
+             match find_target label with
+             | Some target -> execute transfer_buff target
+             | None -> raise control)
+  in
+  execute buff patches
+
+let process_patch_list_root process_patch patch_filename game buff patches =
+  try process_patch_list process_patch patch_filename game buff patches with
+  | Control_flow (TP_ControlActionGoto label, _) ->
+      failwith (Printf.sprintf "Action GOTO escaped its scope: %S" label)
+  | Control_flow (TP_ControlPatchGoto label, _) ->
+      failwith (Printf.sprintf "Patch GOTO escaped its scope: %S" label)
+  | Control_flow (TP_ControlBreak, _) ->
+      failwith "BREAK escaped its enclosing loop"
 
 
 type status = Installed | Temporarily_Uninstalled | Permanently_Uninstalled

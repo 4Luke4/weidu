@@ -62,6 +62,7 @@ let _ = List.iter
       ("BACKUP", BACKUP) ;
       ("BEFORE", BEFORE) ;
       ("BEGIN", BEGIN) ;
+      ("BREAK", BREAK) ;
       ("MAKE_BIFF", BIFF) ;
       ("BUT_ONLY_IF_IT_CHANGES", BUT_ONLY_IF_IT_CHANGES);
       ("BUT_ONLY", BUT_ONLY_IF_IT_CHANGES) ;
@@ -120,6 +121,7 @@ let _ = List.iter
       ("GET_FILE_ARRAY", GET_FILE_ARRAY) ;
       ("GET_STRREF", GET_STRREF) ;
       ("GLOB", GLOB);
+      ("GOTO", GOTO) ;
       ("GROUP", GROUP) ;
       ("IDS_OF_SYMBOL", IDS_OF_SYMBOL) ;
       ("IF", IF) ;

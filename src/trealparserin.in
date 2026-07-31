@@ -89,14 +89,18 @@ nonterm (Tp.wrapper) Start {
 
 nonterm (Tp.tp_file) Tp_File {
   -> BACKUP e1:STRING AUTHOR e2:STRING e3:Tp_Flag_List e4:Tp_Lang_List e5:Tp_Mod_List
-     [ { Tp.tp_filename = e1 ;
-         Tp.backup = (Arch.backslash_to_slash e1);
-         Tp.author = e2;
-         Tp.flags = e3;
-         Tp.languages = e4 ;
-         Tp.module_list = e5 ;
-         Tp.is_auto_eval_string = List.mem Tp.Auto_Eval_Strings e3;
-       } ]
+     [ let result =
+         { Tp.tp_filename = e1 ;
+           Tp.backup = (Arch.backslash_to_slash e1);
+           Tp.author = e2;
+           Tp.flags = e3;
+           Tp.languages = e4 ;
+           Tp.module_list = e5 ;
+           Tp.is_auto_eval_string = List.mem Tp.Auto_Eval_Strings e3;
+         }
+       in
+       Tp.validate_tp_control_flow result;
+       result ]
 }
 
 nonterm(bool) Optional_Evaluate {
@@ -367,6 +371,9 @@ nonterm(Tp.array_indices_sort_type) Array_Indices_Sort_Type {
 }
 
 nonterm(Tp.tp_action) Tp_Action {
+  -> BREAK [ Tp.TP_ActionBreak ]
+  -> GOTO e1:STRING [ Tp.TP_ActionGoto e1 ]
+  -> COLON COLON e1:STRING COLON COLON [ Tp.TP_ActionLabel e1 ]
   -> ACTION_BASH_FOR e1:Str_Reg_List BEGIN e2:Tp_Action_List END
        [ Tp.TP_ActionBashFor(e1,e2) ]
   -> ACTION_FOR_EACH e1:Patch_String_Right IN e2:String_List BEGIN e3:Tp_Action_List END
@@ -1152,7 +1159,10 @@ nonterm (string option) Optional_File_Version {
   -> VERSION e1:STRING [ Some e1 ]
 }
 
-nonterm (Tp.tp_patch) Tp_Patch {
+nonterm(Tp.tp_patch) Tp_Patch {
+  -> BREAK [ Tp.TP_PatchBreak ]
+  -> GOTO e1:STRING [ Tp.TP_PatchGoto e1 ]
+  -> COLON COLON e1:STRING COLON COLON [ Tp.TP_PatchLabel e1 ]
   -> SAY e1:Patch_Exp e2:Lse [ Tp.TP_PatchStrRef(e1,e2) ]
   -> SAY_EVALUATED e1:Patch_Exp e2:STRING [ Tp.TP_PatchStrRefEvaluated(e1,e2) ]
   -> LAUNCH_PATCH_MACRO e1:STRING [ Tp.TP_Launch_Patch_Macro (e1,true) ]
@@ -1463,9 +1473,9 @@ nonterm (Tp.tp_local_declaration) Tp_Local_Declaration {
 }
 
 nonterm (Tp.tp_action list) Tpa_File {
-  -> e1:Tp_Action_List [ e1 ]
+  -> e1:Tp_Action_List [ Tp.validate_action_control_flow e1; e1 ]
 }
 
 nonterm (Tp.tp_patch list) Tpp_File {
-  -> e1:Tp_Patch_List [ e1 ]
+  -> e1:Tp_Patch_List [ Tp.validate_patch_control_flow e1; e1 ]
 }

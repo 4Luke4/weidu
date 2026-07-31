@@ -1,0 +1,4 @@
+::outside::
+DEFINE_ACTION_FUNCTION control_flow_invalid BEGIN
+  GOTO outside
+END

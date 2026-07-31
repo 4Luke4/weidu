@@ -1,0 +1,203 @@
+BACKUP "control-flow/backup"
+AUTHOR "WeiDU"
+
+BEGIN "TP2 control-flow regression tests"
+
+OUTER_SET cf_action_forward = 0
+GOTO action_forward_done
+OUTER_SET cf_action_forward = 1
+::action_forward_done::
+ACTION_IF cf_action_forward BEGIN
+  FAIL "action forward GOTO did not skip statements"
+END
+
+OUTER_SET cf_action_backward = 0
+::action_backward_again::
+OUTER_SET cf_action_backward += 1
+ACTION_IF cf_action_backward < 3 BEGIN
+  GOTO action_backward_again
+END
+ACTION_IF NOT cf_action_backward = 3 BEGIN
+  FAIL "action backward GOTO did not repeat statements"
+END
+
+OUTER_SET cf_action_try = 0
+ACTION_TRY
+  GOTO action_try_done
+WITH
+  DEFAULT
+    OUTER_SET cf_action_try = 1
+END
+::action_try_done::
+ACTION_IF cf_action_try BEGIN
+  FAIL "ACTION_TRY intercepted GOTO"
+END
+
+OUTER_SET cf_action_outer = 0
+OUTER_SET cf_action_inner = 0
+OUTER_WHILE cf_action_outer < 3 BEGIN
+  OUTER_SET cf_action_outer += 1
+  OUTER_WHILE 1 BEGIN
+    OUTER_SET cf_action_inner += 1
+    BREAK
+    OUTER_SET cf_action_inner += 100
+  END
+END
+ACTION_IF NOT cf_action_outer = 3 OR NOT cf_action_inner = 3 BEGIN
+  FAIL "action BREAK did not stop only the innermost loop"
+END
+
+OUTER_SET cf_action_foreach = 0
+ACTION_FOR_EACH cf_value IN one two three BEGIN
+  OUTER_SET cf_action_foreach += 1
+  BREAK
+END
+ACTION_IF NOT cf_action_foreach = 1 BEGIN
+  FAIL "ACTION_FOR_EACH did not honor BREAK"
+END
+
+OUTER_SET cf_action_for = 0
+OUTER_FOR
+  (SET cf_action_for_index = 0;
+   cf_action_for_index < 3;
+   SET cf_action_for_index += 1)
+BEGIN
+  OUTER_SET cf_action_for += 1
+  BREAK
+END
+ACTION_IF NOT cf_action_for = 1 BEGIN
+  FAIL "OUTER_FOR did not honor BREAK"
+END
+
+OUTER_SET cf_action_goto_loop = 0
+OUTER_WHILE 1 BEGIN
+  OUTER_SET cf_action_goto_loop = 1
+  GOTO action_after_loop
+END
+::action_after_loop::
+ACTION_IF NOT cf_action_goto_loop = 1 BEGIN
+  FAIL "action GOTO did not leave a nested loop"
+END
+
+DEFINE_ACTION_FUNCTION cf_action_control_function BEGIN
+  GOTO action_function_done
+  FAIL "action GOTO did not resolve within an action function"
+  ::action_function_done::
+END
+LAF cf_action_control_function END
+
+DEFINE_ACTION_MACRO cf_action_control_macro BEGIN
+  GOTO action_macro_done
+  FAIL "action GOTO did not resolve within an action macro"
+  ::action_macro_done::
+END
+LAM cf_action_control_macro
+
+DEFINE_PATCH_FUNCTION cf_patch_control_function BEGIN
+  GOTO patch_function_done
+  PATCH_FAIL "patch GOTO did not resolve within a patch function"
+  ::patch_function_done::
+END
+
+DEFINE_PATCH_MACRO cf_patch_control_macro BEGIN
+  GOTO patch_macro_done
+  PATCH_FAIL "patch GOTO did not resolve within a patch macro"
+  ::patch_macro_done::
+END
+
+OUTER_SPRINT cf_patch_source "abc"
+OUTER_PATCH_SAVE cf_patch_result "%cf_patch_source%" BEGIN
+  LPF cf_patch_control_function END
+  LPM cf_patch_control_macro
+
+  INSERT_BYTES 3 1
+  WRITE_ASCII 3 "d"
+  GOTO patch_forward_done
+  WRITE_ASCII 0 "x"
+  ::patch_forward_done::
+
+  SET cf_patch_backward = 0
+  ::patch_backward_again::
+  SET cf_patch_backward += 1
+  PATCH_IF cf_patch_backward < 3 BEGIN
+    GOTO patch_backward_again
+  END
+  PATCH_IF NOT cf_patch_backward = 3 BEGIN
+    PATCH_FAIL "patch backward GOTO did not repeat statements"
+  END
+
+  SET cf_patch_try = 0
+  PATCH_TRY
+    GOTO patch_try_done
+  WITH
+    DEFAULT
+      SET cf_patch_try = 1
+  END
+  ::patch_try_done::
+  PATCH_IF cf_patch_try BEGIN
+    PATCH_FAIL "PATCH_TRY intercepted GOTO"
+  END
+END
+ACTION_IF "%cf_patch_result%" STR_CMP "abcd" BEGIN
+  FAIL "patch GOTO did not preserve the current buffer: %cf_patch_result%"
+END
+
+OUTER_SPRINT cf_break_source "abc"
+OUTER_PATCH_SAVE cf_break_result "%cf_break_source%" BEGIN
+  SET cf_patch_outer = 0
+  SET cf_patch_inner = 0
+  WHILE cf_patch_outer < 3 BEGIN
+    SET cf_patch_outer += 1
+    WHILE 1 BEGIN
+      SET cf_patch_inner += 1
+      BREAK
+      SET cf_patch_inner += 100
+    END
+  END
+  PATCH_IF NOT cf_patch_outer = 3 OR NOT cf_patch_inner = 3 BEGIN
+    PATCH_FAIL "patch BREAK did not stop only the innermost loop"
+  END
+
+  SET cf_patch_break = 0
+  WHILE cf_patch_break < 3 BEGIN
+    INSERT_BYTES 3 1
+    WRITE_ASCII 3 "x"
+    SET cf_patch_break += 1
+    BREAK
+    WRITE_ASCII 0 "z"
+  END
+END
+ACTION_IF "%cf_break_result%" STR_CMP "abcx" BEGIN
+  FAIL "patch BREAK discarded buffer changes from its iteration: %cf_break_result%"
+END
+
+OUTER_SPRINT cf_foreach_source "abc"
+OUTER_PATCH_SAVE cf_foreach_result "%cf_foreach_source%" BEGIN
+  SET cf_patch_foreach = 0
+  PATCH_FOR_EACH cf_patch_value IN one two three BEGIN
+    SET cf_patch_foreach += 1
+    BREAK
+  END
+  PATCH_IF NOT cf_patch_foreach = 1 BEGIN
+    PATCH_FAIL "patch FOR_EACH did not honor BREAK"
+  END
+
+  SET cf_patch_goto_loop = 0
+  WHILE 1 BEGIN
+    SET cf_patch_goto_loop = 1
+    GOTO patch_after_loop
+  END
+  ::patch_after_loop::
+  PATCH_IF NOT cf_patch_goto_loop = 1 BEGIN
+    PATCH_FAIL "patch GOTO did not leave a nested loop"
+  END
+END
+
+ACTION_IF 1 BEGIN
+  ::sibling_label::
+END
+ACTION_IF 1 BEGIN
+  ::sibling_label::
+END
+
+PRINT "TP2 control-flow regression tests passed"

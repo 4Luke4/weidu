@@ -1,3 +1,7 @@
+Version 252:
+  * Add BREAK, GOTO, and ::label:: control flow to TP2 action and patch
+    statement lists.
+
 Version 251:
   * CREATE called within CREATE works as expected.
   * CREATE sets SOURCE_* and DEST_* variables.

@@ -64,6 +64,7 @@ open Load
   %token BACKUP
   %token BEFORE
   %token BEGIN
+  %token BREAK
   %token BUT_ONLY_IF_IT_CHANGES
   %token CASE_INSENSITIVE
   %token CASE_SENSITIVE
@@ -118,6 +119,7 @@ open Load
   %token FORCED_SUBCOMPONENT
   %token FOR
   %token FROM
+  %token GOTO
   %token GAME_IS
   %token GET_STRREF
   %token GET_DIRECTORY_ARRAY
@@ -343,14 +345,18 @@ optional_evaluate :
 
   tp_file :
     BACKUP STRING AUTHOR STRING tp_flag_list tp_lang_list tp_mod_list
-    { { Tp.tp_filename = $2 ;
-	Tp.backup = (Arch.backslash_to_slash $2);
-	Tp.author = $4;
-	Tp.flags = $5 ;
-	Tp.languages = $6 ;
-	Tp.module_list = $7 ;
-	Tp.is_auto_eval_string = List.mem Tp.Auto_Eval_Strings $5;
-      } }
+    { let result =
+        { Tp.tp_filename = $2 ;
+	  Tp.backup = (Arch.backslash_to_slash $2);
+	  Tp.author = $4;
+	  Tp.flags = $5 ;
+	  Tp.languages = $6 ;
+	  Tp.module_list = $7 ;
+	  Tp.is_auto_eval_string = List.mem Tp.Auto_Eval_Strings $5;
+        }
+      in
+      Tp.validate_tp_control_flow result;
+      result }
     ;
 
   tp_flag_list :                  { [] }
@@ -988,8 +994,10 @@ optional_evaluate :
 | LOCAL_TEXT_SPRINT patch_STRING_left patch_STRING_right { Tp.TP_LocalTextSprint($2,$3) }
     ;
 
-  tph_file : tp_action_list { $1 }
+  tph_file : tp_action_list
+    { Tp.validate_action_control_flow $1; $1 }
     ;
 
-  tpp_file : tp_patch_list { $1 }
+  tpp_file : tp_patch_list
+    { Tp.validate_patch_control_flow $1; $1 }
     ;

@@ -3901,6 +3901,24 @@ or & \DEFINE{OUTER_INNER_PATCH_SAVE} savevar buffString \t{BEGIN} \ttref{patch} 
   savevar. \\
 or & \DEFINE{OUTER_PATCH_SAVE} savevar buffString \t{BEGIN} \ttref{patch} \Slist \t{END} &
   Equal to \ttref{OUTER_INNER_PATCH_SAVE}, if you feel that OUTER_INNER sounds wrong. \\
+or & \t{BREAK} &
+  Stop the innermost enclosing action loop. This is valid in
+  \ttref{OUTER_WHILE}, \ttref{OUTER_FOR}, \ttref{ACTION_BASH_FOR},
+  \ttref{ACTION_FOR_EACH}, and \ttref{ACTION_PHP_EACH}. It is an error
+  outside an action loop. \\
+or & \t{GOTO} \ttref{label} &
+  Continue execution after the visible \ttref{::label::}. Labels are
+  static, non-empty, case-sensitive strings; neither labels nor
+  \t{GOTO} targets are evaluated for variables. A target may be in the
+  current action list or an enclosing action list, so a jump may leave
+  an \t{ACTION_IF}, action loop, \t{ACTION_MATCH}, or \t{ACTION_TRY}.
+  A jump cannot enter a nested list or cross a component, included
+  file, action function, action macro, or action/patch boundary.
+  Duplicate labels in one list and targets outside the visible scope
+  are errors. Control transfers are not caught by \t{ACTION_TRY}. \\
+or & \t{::}\ttref{label}\t{::} &
+  Declare an action control-flow label for \t{GOTO}. The same label name
+  may be reused in separate nested or sibling lists. \\
 or & \DEFINE{OUTER_WHILE} \ttref{value} \t{BEGIN}
   \ttref{TP2 Action} \Slist \t{END} &
   If \ttref{value} is non-zero, execute the given \ttref{TP2 Action} \Slist and
@@ -4760,6 +4778,29 @@ or & \Ob \ttref{SET} \Oe \Ob \t{GLOBAL} \Oe \ttref{variable} \t{<<=} \ttref{valu
   Equivalent to \t{SET variable = variable BLSL value}. \\
 or & \Ob \ttref{SET} \Oe \Ob \t{GLOBAL} \Oe \ttref{variable} \t{>>=} \ttref{value} &
   Equivalent to \t{SET variable = variable BLSR value}. \\
+
+or & \t{BREAK} &
+  Stop the innermost enclosing patch loop. This is valid in
+  \ttref{WHILE}, \ttref{FOR}, \ttref{PATCH_BASH_FOR},
+  \ttref{PATCH_FOR_EACH}, and \ttref{PHP_EACH}. Buffer changes made
+  before \t{BREAK} in the current iteration are retained. It is an
+  error outside a patch loop. \\
+or & \t{GOTO} \ttref{label} &
+  Continue execution after the visible \ttref{::label::}. Labels are
+  static, non-empty, case-sensitive strings; neither labels nor
+  \t{GOTO} targets are evaluated for variables. A target may be in the
+  current patch list or an enclosing patch list, so a jump may leave a
+  \t{PATCH_IF}, patch loop, \t{PATCH_MATCH}, or \t{PATCH_TRY}. A jump
+  cannot enter a nested list or cross an included file, patch function,
+  patch macro, action/patch boundary, or a construct that changes the
+  current buffer, including \t{INNER_PATCH}, \t{INNER_PATCH_FILE},
+  \t{INNER_PATCH_SAVE}, \t{REPLACE_EVALUATE}, \t{EDIT_SAV_FILE}, and
+  \t{DECOMPILE_AND_PATCH}. Duplicate labels in one list and targets
+  outside the visible scope are errors. Control transfers are not
+  caught by \t{PATCH_TRY}. \\
+or & \t{::}\ttref{label}\t{::} &
+  Declare a patch control-flow label for \t{GOTO}. The same label name
+  may be reused in separate nested or sibling lists. \\
 
 or & \DEFINE{WHILE} \ttref{value} \t{BEGIN}
   \ttref{patch} \Slist \t{END} &

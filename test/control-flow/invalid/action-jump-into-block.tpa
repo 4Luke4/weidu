@@ -1,0 +1,4 @@
+GOTO inside
+ACTION_IF 1 BEGIN
+  ::inside::
+END
