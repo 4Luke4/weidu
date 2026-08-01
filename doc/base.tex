@@ -3909,6 +3909,18 @@ or & \DEFINE{OUTER_WHILE} \ttref{value} \t{BEGIN}
   an infinite loop. See the \ahrefloc{sec-while}{\t{WHILE}} loop tutorial for more
   information.
   \\
+or & \ttref{GOTO} label &
+  Continue execution at the visible action label written as
+  \t{::label::}. Label names are non-empty, case-sensitive literals and are
+  not evaluated for variables. See ``Control-flow scope'' below. \\
+or & \t{::}label\t{::} &
+  Declare an action label for \ttref{GOTO}. The label itself has no run-time
+  effect. \\
+or & \DEFINE{BREAK} &
+  End the innermost enclosing \ttref{OUTER_WHILE}, \ttref{OUTER_FOR},
+  \ttref{ACTION_FOR_EACH}, \ttref{ACTION_PHP_EACH}, or
+  \ttref{ACTION_BASH_FOR} loop. For \ttref{OUTER_FOR}, the increment list is
+  not executed after \ttref{BREAK}. \\
 or & \DEFINE{OUTER_FOR} \t{(} \ttref{patch} \Slist \t{;}
                         \ttref{value} \t{;}
                         \ttref{patch} \Slist \t{)}
@@ -4769,6 +4781,18 @@ or & \DEFINE{WHILE} \ttref{value} \t{BEGIN}
   an infinite loop. See the \ahrefloc{sec-while}{\t{WHILE}} loop tutorial for more
   information.
   \\
+or & \ttref{GOTO} label &
+  Continue execution at the visible patch label written as
+  \t{::label::}. Label names are non-empty, case-sensitive literals and are
+  not evaluated for variables. See ``Control-flow scope'' below. \\
+or & \t{::}label\t{::} &
+  Declare a patch label for \ttref{GOTO}. The label itself has no run-time
+  effect. \\
+or & \ttref{BREAK} &
+  End the innermost enclosing \ttref{WHILE}, \ttref{FOR},
+  \ttref{PATCH_FOR_EACH}, \ttref{PATCH_PHP_EACH}, or
+  \ttref{PATCH_BASH_FOR} loop. For \ttref{FOR}, the increment list is not
+  executed after \ttref{BREAK}. \\
 or & \DEFINE{FOR} \t{(} \ttref{patch} \Slist \t{;}
                         \ttref{value} \t{;}
                         \ttref{patch} \Slist \t{)}
@@ -6029,6 +6053,42 @@ WRITE_LONG  4 ( ~%myvar%~ + 11 )
 The file will contain the two binary integers 33 and 44. \\
 
 \end{tabular}
+
+\label{sec-control-flow}\subsection{Control-flow scope}
+
+The \ttref{GOTO} and \ttref{BREAK} statements are available in both action
+and patch code. An action \ttref{GOTO} can target only an action label, and a
+patch \ttref{GOTO} can target only a patch label. A label is visible throughout
+the action or patch list that declares it and throughout nested control-flow
+lists of the same kind. Thus, a jump may leave a nested conditional or loop,
+but it may not jump into a nested list.
+
+Function and macro bodies, included files, embedded lists of the other kind,
+and patch lists that operate on a separate buffer form new control-flow
+regions. Labels and jumps cannot cross those boundaries. A label name cannot
+duplicate another visible label name. WeiDU rejects duplicate labels, jumps
+without a visible target, empty label names, and \ttref{BREAK} statements
+outside a suitable loop while parsing the file, before executing its code.
+\ttref{ACTION_TRY} and \ttref{PATCH_TRY} do not catch these control transfers.
+
+For example, a backward jump can express a small action-state machine, while
+\ttref{BREAK} avoids an extra sentinel variable when a loop has found its
+result:
+
+\begin{verbatim}
+OUTER_SET attempts = 0
+::retry::
+OUTER_SET ++attempts
+ACTION_IF attempts < 3 BEGIN
+  GOTO retry
+END
+
+OUTER_FOR (i = 0; i < count; ++i) BEGIN
+  ACTION_IF predicate BEGIN
+    BREAK
+  END
+END
+\end{verbatim}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{WeiDU \ttref{TP2} Tutorials}

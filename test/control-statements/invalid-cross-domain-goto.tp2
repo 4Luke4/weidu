@@ -1,0 +1,8 @@
+BACKUP ~backup~
+AUTHOR ~WeiDU regression tests~
+
+BEGIN ~Invalid cross-domain GOTO~
+::action_label::
+OUTER_PATCH ~~ BEGIN
+  GOTO action_label
+END

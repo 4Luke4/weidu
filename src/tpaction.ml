@@ -17,7 +17,27 @@ open Tpuninstall
 (*************************************************************************
  * process_action
  *************************************************************************)
-let rec process_action_real our_lang game this_tp2_filename tp a =
+let rec process_action_list_real our_lang game this_tp2_filename tp actions =
+  let process_action =
+    process_action_real our_lang game this_tp2_filename in
+  if not (Tpcontrol.action_block_has_labels actions) then
+    List.iter (process_action tp) actions
+  else begin
+    let remaining = ref actions in
+    while !remaining <> [] do
+      match !remaining with
+      | [] -> ()
+      | action :: tail ->
+          remaining := tail ;
+          (try process_action tp action with
+           | Tpcontrol.Action_flow (Tpcontrol.Goto name) as flow ->
+               (match Tpcontrol.action_label_target actions name with
+                | Some target -> remaining := target
+                | None -> raise flow))
+    done
+  end
+
+and process_action_real our_lang game this_tp2_filename tp a =
 
   let get_next_col_number file =
     let (a,b) = split_resref file in
@@ -175,7 +195,12 @@ let rec process_action_real our_lang game this_tp2_filename tp a =
           end) true con_l in
 
   let process_action = (process_action_real our_lang game this_tp2_filename) in
-  let process_patch2 = process_patch2_real process_action tp our_lang in
+  let process_action_list =
+    (process_action_list_real our_lang game this_tp2_filename) in
+  let process_patch2 =
+    process_patch2_real process_action process_action_list tp our_lang in
+  let process_patch_list =
+    process_patch_list_real process_action process_action_list tp our_lang in
 
   let run_patch x = ignore (process_patch2 "" game "" x) in
   let pl_of_al x = [TP_PatchInnerAction x] in
@@ -184,6 +209,14 @@ let rec process_action_real our_lang game this_tp2_filename tp a =
   Stats.time str (fun () ->
     try
       (match a with
+
+      | TP_ActionLabel _ -> ()
+
+      | TP_ActionGoto target ->
+          raise (Tpcontrol.Action_flow (Tpcontrol.Goto target.control_name))
+
+      | TP_ActionBreak _ ->
+          raise (Tpcontrol.Action_flow Tpcontrol.Break)
 
       | TP_ActionBashFor(where,al) ->
           run_patch (TP_PatchBashFor (where,pl_of_al al))
@@ -531,7 +564,7 @@ let rec process_action_real our_lang game this_tp2_filename tp a =
               Hashtbl.replace loaded_tph file x ;
               x
             in
-            List.iter (process_action tp) tph_parsed ;) string_list ;
+            process_action_list tp tph_parsed ;) string_list ;
 
       | TP_Include(string_list) ->
           let string_list = List.map Var.get_string string_list in
@@ -548,7 +581,7 @@ let rec process_action_real our_lang game this_tp2_filename tp a =
               x
             end
             in
-            List.iter (process_action tp) tph_parsed ;) string_list ;
+            process_action_list tp tph_parsed ;) string_list ;
 
       | TP_Uninstall_Now(name,comp) ->
           let comp = Int32.to_int (eval_pe "" game comp) in
@@ -804,12 +837,11 @@ let rec process_action_real our_lang game this_tp2_filename tp a =
                     buff clist game "COPY" false in
                 if ok_to_copy then begin
                   let result_buff =
-                    List.fold_left (fun acc elt ->
-                      try process_patch2 src game acc elt
-                      with e -> log_and_print
-                          "ERROR: [%s] -> [%s] Patching Failed (COPY) (%s)\n"
-                          src dest (printexc_to_string e); raise e)
-                      buff plist in
+                    try process_patch_list src game buff plist with e ->
+                      log_and_print
+                        "ERROR: [%s] -> [%s] Patching Failed (COPY) (%s)\n"
+                        src dest (printexc_to_string e) ;
+                      raise e in
                   let dest =
                     if is_directory dest then
                       dest ^ "/" ^ (Case_ins.filename_basename src)
@@ -1577,8 +1609,8 @@ let rec process_action_real our_lang game this_tp2_filename tp a =
               (Load.get_active_dialog game).(i)
             else
               fst (Tlk.lse_to_tlk_string (Hashtbl.find Dc.strings_added_ht i)) in
-            let newmale = List.fold_left (fun acc elt ->
-              process_patch2 "dialog.tlk" game acc elt) male.Tlk.text pl in
+            let newmale =
+              process_patch_list "dialog.tlk" game male.Tlk.text pl in
             let soundmale = male.Tlk.sound_name in
             let newfemale, soundfemale = match Load.get_active_dialogf_opt game with
               Some dialogf ->
@@ -1587,9 +1619,8 @@ let rec process_action_real our_lang game this_tp2_filename tp a =
                 else
                   snd (Tlk.lse_to_tlk_string (Hashtbl.find Dc.strings_added_ht i))
                 in
-                (List.fold_left (fun acc elt ->
-                  process_patch2 "dialog.tlk" game acc elt)
-                   female.Tlk.text pl, female.Tlk.sound_name)
+                (process_patch_list "dialog.tlk" game female.Tlk.text pl,
+                 female.Tlk.sound_name)
             | None -> newmale, soundmale in
             Dc.set_string game i (Dlg.Local_String {
                                   lse_male = newmale;
@@ -1757,8 +1788,7 @@ let rec process_action_real our_lang game this_tp2_filename tp a =
               let newd1 = if pl = [] then newd else "tb#compile_patches/" ^ newd in
               if pl <> [] then begin
                 let contents = load_file newd in
-                let contents = List.fold_left (fun acc elt ->
-                  process_patch2 d game acc elt) contents pl in
+                let contents = process_patch_list d game contents pl in
                 log_only_modder "Defined Inlined File [%s] (length %d)\n"
                   newd1 (String.length contents) ;
                 Hashtbl.replace inlined_files (Arch.backslash_to_slash newd1) contents
@@ -2062,13 +2092,11 @@ let rec process_action_real our_lang game this_tp2_filename tp a =
                 List.iter (fun p -> process_patch1 src game src_buff p) pl ;
               with _ -> ())
             end ;
-            let src_buff = List.fold_left (fun acc elt ->
-              (try
-                process_patch2 src game acc elt
-              with e ->
+            let src_buff =
+              try process_patch_list src game src_buff pl with e ->
                 log_and_print "ERROR: [%s] -> [%s] Patching Failed \
-                  (EXTEND_TOP/BOTTOM)\n" src dest ; raise e)) src_buff pl
-            in
+                  (EXTEND_TOP/BOTTOM)\n" src dest ;
+                raise e in
             Dc.ok_to_resolve_strings_while_loading := Some(game) ;
             (try
               let res = handle_script_buffer src src_buff in
@@ -2490,6 +2518,8 @@ let rec process_action_real our_lang game this_tp2_filename tp a =
         clear_memory := true;
       end;
       with
+     | (Tpcontrol.Action_flow _ | Tpcontrol.Patch_flow _) as flow ->
+         raise flow
      | Abort msg -> raise (Abort msg)
      | e -> (* from: let rec process_action = try *)
       (if !continue_on_error then begin
