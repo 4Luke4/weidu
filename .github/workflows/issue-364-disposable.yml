@@ -1,0 +1,90 @@
+name: Disposable issue 364 validation
+
+on:
+  push:
+    branches:
+      - ci/issue-364-add-kit-filler-row
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply proposed patch
+        run: git apply --check .ci/issue-364.patch && git apply .ci/issue-364.patch
+
+      - name: Check patch formatting
+        run: git diff --check
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential cmake flex bison opam
+
+      - name: Create unsafe-string OCaml switch
+        run: |
+          opam init --bare --disable-sandboxing --yes
+          opam switch create weidu ocaml-variants.4.14.2+options ocaml-option-default-unsafe-string --yes
+
+      - name: Build Elkhound
+        run: |
+          git clone --depth 1 https://github.com/WeiDUorg/elkhound.git "$RUNNER_TEMP/elkhound"
+          cmake -S "$RUNNER_TEMP/elkhound/src" -B "$RUNNER_TEMP/elkhound/build" \
+            -DCMAKE_BUILD_TYPE=Release -DEXTRAS=OFF -DOCAML=OFF
+          cmake --build "$RUNNER_TEMP/elkhound/build" --parallel 2
+          echo "$RUNNER_TEMP/elkhound/build" >> "$GITHUB_PATH"
+
+      - name: Build WeiDU
+        run: opam exec -- make -j2 weidu
+
+      - name: Verify filler-row replacement semantics
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          source = Path("src/tpaction.ml").read_text(encoding="utf-8")
+          assert "TP_PatchStringTextually" in source
+          assert "filler_pattern" in source
+          assert "number + 3" not in source[source.index("let kitlist_action"):source.index("let when_exists")]
+
+          def replace_filler(table: str, replacement: str) -> str:
+              filler = next(
+                  line for line in re.split(r"[\r\n]+", table)
+                  if re.match(r"^[0-9]+[ \t]+\*[ \t]+\*", line)
+              )
+              return re.sub(rf"^{re.escape(filler)}$", replacement, table, flags=re.MULTILINE)
+
+          classic = """2DA V1.0
+          *
+                ROWNAME LOWER MIXED HELP ABILITIES PROFICIENCY UNUSABLE CLASS
+          31    BARBARIAN 45855 45859 45869 CLABFI05 51 0x40000000 2
+          32    * * * * * * * *
+          33    * * * * * * * *
+          """
+          classic_row = "32  A7_TESTKIT 74439 74440 74441 CLABTEST 53 0x00004000 2"
+          classic_result = replace_filler(classic, classic_row)
+          classic_tokens = next(line.split() for line in classic_result.splitlines() if "A7_TESTKIT" in line)
+          assert classic_tokens == classic_row.split()
+          assert len(classic_tokens) == 9
+
+          ee = """2DA V1.0
+          *
+                ROWNAME LOWER MIXED HELP ABILITIES PROFICIENCY UNUSABLE CLASS KITIDS
+          31    BARBARIAN 45855 45859 45869 CLABFI05 51 0x40000000 2 BARBARIAN
+          32    * * * * * * * * *
+          33    * * * * * * * * *
+          """
+          ee_row = "32  A7_TESTKIT 74439 74440 74441 CLABTEST 53 0x00004000 2 A7_TESTKIT"
+          ee_result = replace_filler(ee, ee_row)
+          ee_tokens = next(line.split() for line in ee_result.splitlines() if "A7_TESTKIT" in line)
+          assert ee_tokens == ee_row.split()
+          assert len(ee_tokens) == 10
+          assert ee_tokens[-1] == "A7_TESTKIT"
+          assert "32    * * * * * * * * *" not in ee_result
+          PY
