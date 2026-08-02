@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - ci/issue-364-add-kit-filler-row
+  pull_request:
+    branches:
+      - devel
   workflow_dispatch:
 
 permissions:
@@ -96,6 +99,7 @@ jobs:
           PY
 
       - name: Publish clean final branch
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
         env:
           FINAL_BRANCH: fix/issue-364-add-kit-filler-row
         run: |
