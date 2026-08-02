@@ -42,7 +42,7 @@ jobs:
           cmake -S "$RUNNER_TEMP/elkhound/src" -B "$RUNNER_TEMP/elkhound/build" \
             -DCMAKE_BUILD_TYPE=Release -DEXTRAS=OFF -DOCAML=OFF
           cmake --build "$RUNNER_TEMP/elkhound/build" --parallel 2
-          echo "$RUNNER_TEMP/elkhound/build" >> "$GITHUB_PATH"
+          echo "$RUNNER_TEMP/elkhound/build/elkhound" >> "$GITHUB_PATH"
 
       - name: Build WeiDU
         run: opam exec -- make -j2 weidu
