@@ -1,0 +1,69 @@
+name: Temporary Windows registry build validation
+
+on:
+  pull_request:
+    branches:
+      - devel
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@main
+
+      - name: Fetch Windows Elkhound
+        shell: pwsh
+        run: |
+          curl.exe -fL https://github.com/The-Mod-Elephant/elkhound/releases/download/1.0.3/elkhound.exe -o elkhound.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Set up OCaml
+        uses: ocaml/setup-ocaml@v3.5.1
+        with:
+          ocaml-compiler: ocaml-variants.4.14.2+options,ocaml-option-default-unsafe-string
+
+      - name: Install packaging tools
+        shell: pwsh
+        run: |
+          choco install upx zip --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build and verify Windows release archive
+        shell: pwsh
+        run: |
+          $elkhoundDestination = Join-Path $env:GITHUB_WORKSPACE '_opam\bin\elkhound.exe'
+          Move-Item -LiteralPath 'elkhound.exe' -Destination $elkhoundDestination
+
+          (& opam env) -split '\r?\n' | ForEach-Object { Invoke-Expression $_ }
+
+          x86_64-w64-mingw32-gcc --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          make
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          make windows_zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $archives = @(Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter 'WeiDU-Windows-*.zip' -File)
+          if ($archives.Count -eq 0) {
+            throw 'The Windows release build did not produce WeiDU-Windows-*.zip.'
+          }
+
+          $archives | ForEach-Object {
+            Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName
+            Write-Host ('Archive size: {0} bytes' -f $_.Length)
+          }
+
+      - name: Upload Windows release archive
+        uses: actions/upload-artifact@v6
+        with:
+          name: temporary-windows-registry-build
+          path: WeiDU-Windows-*.zip
+          if-no-files-found: error
