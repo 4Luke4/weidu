@@ -185,41 +185,20 @@ let split_apart str = Str.split many_whitespace_regexp str
 (*************************************************************************
  * process_patch2
  *************************************************************************)
-let rec process_patch_list_real process_action process_action_list tp our_lang
+let rec process_patch_list_real process_action tp our_lang
     patch_filename game buff patches =
   let process_patch2 =
-    process_patch2_real process_action process_action_list tp our_lang in
-  if not (Tpcontrol.patch_block_has_labels patches) then
-    List.fold_left
-      (fun current patch -> process_patch2 patch_filename game current patch)
-      buff patches
-  else begin
-    let current = ref buff in
-    let remaining = ref patches in
-    while !remaining <> [] do
-      match !remaining with
-      | [] -> ()
-      | patch :: tail ->
-          remaining := tail ;
-          (try
-             current := process_patch2 patch_filename game !current patch
-           with
-           | Tpcontrol.Patch_flow (Tpcontrol.Goto name, flow_buff) as flow ->
-               (match Tpcontrol.patch_label_target patches name with
-                | Some target ->
-                    current := flow_buff ;
-                    remaining := target
-                | None -> raise flow))
-    done ;
-    !current
-  end
+    process_patch2_real process_action tp our_lang in
+  List.fold_left
+    (fun current patch -> process_patch2 patch_filename game current patch)
+    buff patches
 
-and process_patch2_real process_action process_action_list tp our_lang
+and process_patch2_real process_action tp our_lang
     patch_filename game buff p =
   let process_patch2 =
-    process_patch2_real process_action process_action_list tp our_lang in
+    process_patch2_real process_action tp our_lang in
   let process_patch_list =
-    process_patch_list_real process_action process_action_list tp our_lang in
+    process_patch_list_real process_action tp our_lang in
   process_patch1 patch_filename game buff p ;
 
   Stats.time "process_patch2" (fun () ->
@@ -235,11 +214,8 @@ and process_patch2_real process_action process_action_list tp our_lang
       ()
     in
     match p with
-    | TP_PatchLabel _ -> buff
-    | TP_PatchGoto target ->
-        raise
-          (Tpcontrol.Patch_flow
-             (Tpcontrol.Goto target.control_name, buff))
+    | TP_PatchContinue _ ->
+        raise (Tpcontrol.Patch_flow (Tpcontrol.Continue, buff))
     | TP_PatchBreak _ ->
         raise (Tpcontrol.Patch_flow (Tpcontrol.Break, buff))
     | TP_PatchReadByte(_)
@@ -438,7 +414,7 @@ and process_patch2_real process_action process_action_list tp our_lang
         buff
 
     | TP_PatchInnerAction(al) ->
-        process_action_list tp al ;
+        List.iter (process_action tp) al ;
         buff
 
     | TP_PatchInnerBuff(buff_var,pl) ->
@@ -657,16 +633,19 @@ and process_patch2_real process_action process_action_list tp our_lang
 
     | TP_PatchWhile(pred,pl) ->
         let current = ref buff in
-        let continue = ref true in
-        while !continue && is_true (eval_pe buff game pred) do
+        let keep_running = ref true in
+        while !keep_running && is_true (eval_pe buff game pred) do
           try
             current := process_patch_list patch_filename game !current pl
           with
           | Tpcontrol.Patch_flow (Tpcontrol.Break, break_buff) ->
               current := break_buff ;
-              continue := false
+              keep_running := false
           | Tpcontrol.Action_flow Tpcontrol.Break ->
-              continue := false
+              keep_running := false
+          | Tpcontrol.Patch_flow (Tpcontrol.Continue, continue_buff) ->
+              current := continue_buff
+          | Tpcontrol.Action_flow Tpcontrol.Continue -> ()
         done ;
         !current
 
@@ -703,9 +682,13 @@ and process_patch2_real process_action process_action_list tp our_lang
             Unix.closedir dh ;
           with _ -> ()) where ;
         let the_buff = ref buff in
-        begin
-          try
-            List.iter (fun file ->
+        let keep_running = ref true in
+        let remaining = ref (List.rev !find_list) in
+        while !keep_running && !remaining <> [] do
+          match !remaining with
+          | [] -> ()
+          | file :: tail ->
+              remaining := tail ;
               let directory = Case_ins.filename_dirname file in
               let filespec = Case_ins.filename_basename file in
               Var.set_string "BASH_FOR_DIRECTORY" directory ;
@@ -715,13 +698,21 @@ and process_patch2_real process_action process_action_list tp our_lang
               Var.set_string "BASH_FOR_RES" a;
               Var.set_string "BASH_FOR_EXT" b;
               Var.set_int "BASH_FOR_SIZE" (file_size file);
-              the_buff := process_patch_list patch_filename game !the_buff pl)
-              (List.rev !find_list) ;
-            !the_buff
-          with
-          | Tpcontrol.Patch_flow (Tpcontrol.Break, break_buff) -> break_buff
-          | Tpcontrol.Action_flow Tpcontrol.Break -> !the_buff
-        end
+              (try
+                 the_buff :=
+                   process_patch_list patch_filename game !the_buff pl
+               with
+               | Tpcontrol.Patch_flow (Tpcontrol.Break, break_buff) ->
+                   the_buff := break_buff ;
+                   keep_running := false
+               | Tpcontrol.Action_flow Tpcontrol.Break ->
+                   keep_running := false
+               | Tpcontrol.Patch_flow
+                   (Tpcontrol.Continue, continue_buff) ->
+                   the_buff := continue_buff
+               | Tpcontrol.Action_flow Tpcontrol.Continue -> ())
+        done ;
+        !the_buff
 
     | TP_PatchClearArray(arr) ->
         let arr = eval_pe_str arr in
@@ -794,17 +785,29 @@ and process_patch2_real process_action process_action_list tp our_lang
         let var = eval_pe_str var in
         let sl = List.map Var.get_string sl in
         let the_buff = ref buff in
-        begin
-          try
-            List.iter (fun x ->
+        let keep_running = ref true in
+        let remaining = ref sl in
+        while !keep_running && !remaining <> [] do
+          match !remaining with
+          | [] -> ()
+          | x :: tail ->
+              remaining := tail ;
               Var.set_string var x ;
-              the_buff := process_patch_list patch_filename game !the_buff pl)
-              sl ;
-            !the_buff
-          with
-          | Tpcontrol.Patch_flow (Tpcontrol.Break, break_buff) -> break_buff
-          | Tpcontrol.Action_flow Tpcontrol.Break -> !the_buff
-        end
+              (try
+                 the_buff :=
+                   process_patch_list patch_filename game !the_buff pl
+               with
+               | Tpcontrol.Patch_flow (Tpcontrol.Break, break_buff) ->
+                   the_buff := break_buff ;
+                   keep_running := false
+               | Tpcontrol.Action_flow Tpcontrol.Break ->
+                   keep_running := false
+               | Tpcontrol.Patch_flow
+                   (Tpcontrol.Continue, continue_buff) ->
+                   the_buff := continue_buff
+               | Tpcontrol.Action_flow Tpcontrol.Continue -> ())
+        done ;
+        !the_buff
 
     | TP_PatchPHPEach(var,invar,outvar,pl) ->
         let var_s = Var.get_string (eval_pe_str var) in
@@ -814,9 +817,13 @@ and process_patch2_real process_action process_action_list tp our_lang
         let outvar = eval_pe_str outvar in
         let  invar = eval_pe_str  invar in
         let the_buff = ref buff in
-        begin
-          try
-            List.iter (fun indices ->
+        let keep_running = ref true in
+        let remaining = ref (List.rev values) in
+        while !keep_running && !remaining <> [] do
+          match !remaining with
+          | [] -> ()
+          | indices :: tail ->
+              remaining := tail ;
               let i = ref 0 in
               List.iter (fun index ->
                 if !i = 0 then Var.set_string invar index;
@@ -834,28 +841,43 @@ and process_patch2_real process_action process_action_list tp our_lang
                  the_buff :=
                    process_patch_list patch_filename game !the_buff pl ;
                  cleanup ()
-               with flow -> cleanup () ; raise flow))
-              (List.rev values);
-            !the_buff
-          with
-          | Tpcontrol.Patch_flow (Tpcontrol.Break, break_buff) -> break_buff
-          | Tpcontrol.Action_flow Tpcontrol.Break -> !the_buff
-        end
+               with
+               | Tpcontrol.Patch_flow (Tpcontrol.Break, break_buff) ->
+                   cleanup () ;
+                   the_buff := break_buff ;
+                   keep_running := false
+               | Tpcontrol.Action_flow Tpcontrol.Break ->
+                   cleanup () ;
+                   keep_running := false
+               | Tpcontrol.Patch_flow
+                   (Tpcontrol.Continue, continue_buff) ->
+                   cleanup () ;
+                   the_buff := continue_buff
+               | Tpcontrol.Action_flow Tpcontrol.Continue ->
+                   cleanup ()
+               | flow -> cleanup () ; raise flow)
+        done ;
+        !the_buff
 
     | TP_PatchFor(init,guard,inc,body) ->
         let initial = process_patch_list patch_filename game buff init in
         let current = ref initial in
-        let continue = ref true in
-        while !continue && is_true (eval_pe initial game guard) do
+        let keep_running = ref true in
+        while !keep_running && is_true (eval_pe initial game guard) do
           try
             current := process_patch_list patch_filename game !current body ;
             current := process_patch_list patch_filename game !current inc
           with
           | Tpcontrol.Patch_flow (Tpcontrol.Break, break_buff) ->
               current := break_buff ;
-              continue := false
+              keep_running := false
           | Tpcontrol.Action_flow Tpcontrol.Break ->
-              continue := false
+              keep_running := false
+          | Tpcontrol.Patch_flow (Tpcontrol.Continue, continue_buff) ->
+              current := continue_buff ;
+              current := process_patch_list patch_filename game !current inc
+          | Tpcontrol.Action_flow Tpcontrol.Continue ->
+              current := process_patch_list patch_filename game !current inc
         done ;
         !current
 

@@ -1,8 +1,7 @@
 BACKUP ~backup~
 AUTHOR ~WeiDU regression tests~
 
-BEGIN ~Invalid cross-domain GOTO~
-::action_label::
+BEGIN ~Invalid patch CONTINUE~
 OUTER_PATCH ~~ BEGIN
-  GOTO action_label
+  CONTINUE
 END

@@ -17,27 +17,7 @@ open Tpuninstall
 (*************************************************************************
  * process_action
  *************************************************************************)
-let rec process_action_list_real our_lang game this_tp2_filename tp actions =
-  let process_action =
-    process_action_real our_lang game this_tp2_filename in
-  if not (Tpcontrol.action_block_has_labels actions) then
-    List.iter (process_action tp) actions
-  else begin
-    let remaining = ref actions in
-    while !remaining <> [] do
-      match !remaining with
-      | [] -> ()
-      | action :: tail ->
-          remaining := tail ;
-          (try process_action tp action with
-           | Tpcontrol.Action_flow (Tpcontrol.Goto name) as flow ->
-               (match Tpcontrol.action_label_target actions name with
-                | Some target -> remaining := target
-                | None -> raise flow))
-    done
-  end
-
-and process_action_real our_lang game this_tp2_filename tp a =
+let rec process_action_real our_lang game this_tp2_filename tp a =
 
   let get_next_col_number file =
     let (a,b) = split_resref file in
@@ -195,12 +175,10 @@ and process_action_real our_lang game this_tp2_filename tp a =
           end) true con_l in
 
   let process_action = (process_action_real our_lang game this_tp2_filename) in
-  let process_action_list =
-    (process_action_list_real our_lang game this_tp2_filename) in
   let process_patch2 =
-    process_patch2_real process_action process_action_list tp our_lang in
+    process_patch2_real process_action tp our_lang in
   let process_patch_list =
-    process_patch_list_real process_action process_action_list tp our_lang in
+    process_patch_list_real process_action tp our_lang in
 
   let run_patch x = ignore (process_patch2 "" game "" x) in
   let pl_of_al x = [TP_PatchInnerAction x] in
@@ -210,10 +188,8 @@ and process_action_real our_lang game this_tp2_filename tp a =
     try
       (match a with
 
-      | TP_ActionLabel _ -> ()
-
-      | TP_ActionGoto target ->
-          raise (Tpcontrol.Action_flow (Tpcontrol.Goto target.control_name))
+      | TP_ActionContinue _ ->
+          raise (Tpcontrol.Action_flow Tpcontrol.Continue)
 
       | TP_ActionBreak _ ->
           raise (Tpcontrol.Action_flow Tpcontrol.Break)
@@ -564,7 +540,7 @@ and process_action_real our_lang game this_tp2_filename tp a =
               Hashtbl.replace loaded_tph file x ;
               x
             in
-            process_action_list tp tph_parsed ;) string_list ;
+            List.iter (process_action tp) tph_parsed ;) string_list ;
 
       | TP_Include(string_list) ->
           let string_list = List.map Var.get_string string_list in
@@ -581,7 +557,7 @@ and process_action_real our_lang game this_tp2_filename tp a =
               x
             end
             in
-            process_action_list tp tph_parsed ;) string_list ;
+            List.iter (process_action tp) tph_parsed ;) string_list ;
 
       | TP_Uninstall_Now(name,comp) ->
           let comp = Int32.to_int (eval_pe "" game comp) in

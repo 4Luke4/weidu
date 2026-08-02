@@ -1,5 +1,5 @@
 BACKUP ~backup~
 AUTHOR ~WeiDU regression tests~
 
-BEGIN ~Invalid empty label~
-::~~::
+BEGIN ~Invalid action CONTINUE~
+CONTINUE

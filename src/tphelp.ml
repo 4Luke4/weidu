@@ -145,8 +145,7 @@ and pe_str_str s = match s with
 
 
 let action_to_str a = match a with
-| TP_ActionLabel _ -> "::label::"
-| TP_ActionGoto _ -> "GOTO"
+| TP_ActionContinue _ -> "CONTINUE"
 | TP_ActionBreak _ -> "BREAK"
 | TP_Copy _ -> "COPY"
 | TP_Move _ -> "MOVE"

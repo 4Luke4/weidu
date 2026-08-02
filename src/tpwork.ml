@@ -852,8 +852,7 @@ let rec handle_tp game this_tp2_filename tp =
             end ;
 
             List.iter (fun flag -> match flag with
-            | Always(al) ->
-                process_action_list_real our_lang game this_tp2_filename tp al
+            | Always(al) -> List.iter (process_action_real our_lang game this_tp2_filename tp) al
             | TP_No_If_Eval () -> has_if_eval_bug := false ;
             | Define_Action_Macro(str,decl,al) ->
                 Hashtbl.replace macros (str,false) (decl, [TP_PatchInnerAction al])
@@ -870,8 +869,7 @@ let rec handle_tp game this_tp2_filename tp =
                 log_and_print "WARNING: Unable to read readln references from [%s]: %s\n"
                   args_backup_filename (printexc_to_string e)
             end ;
-            process_action_list_real our_lang game this_tp2_filename tp
-              m.mod_parts ;
+            List.iter (process_action_real our_lang game this_tp2_filename tp) m.mod_parts ;
             if !interactive then begin
               Mymarshal.write_readln readln_backup_filename (List.rev !readln_strings);
             end ;

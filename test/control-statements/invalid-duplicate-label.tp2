@@ -1,8 +1,0 @@
-BACKUP ~backup~
-AUTHOR ~WeiDU regression tests~
-
-BEGIN ~Invalid duplicate label~
-::duplicate_label::
-ACTION_IF 1 BEGIN
-  ::duplicate_label::
-END

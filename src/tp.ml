@@ -45,20 +45,12 @@ type tp_control_location = {
   control_column : int ;
 }
 
-type tp_control_target = {
-  control_name : string ;
-  control_location : tp_control_location ;
-}
-
 let current_control_location () =
   let context = the_context () in
   { control_filename = context.filename ;
     control_line = context.line ;
     control_column = context.col - context.delta ;
   }
-
-let make_control_target name =
-  { control_name = name ; control_location = current_control_location () }
 
 type tp_flag =
   | Version of Dlg.tlk_string
@@ -166,8 +158,7 @@ and tp_cache_arg =
 | TP_Cache
 
 and tp_action =
-  | TP_ActionLabel of tp_control_target
-  | TP_ActionGoto of tp_control_target
+  | TP_ActionContinue of tp_control_location
   | TP_ActionBreak of tp_control_location
   | TP_ActionBashFor of ((string * (bool option) * string) list) * (tp_action list)
   | TP_ActionDefineArray of tp_pe_string * string list
@@ -356,8 +347,7 @@ and tp_local_declaration =
   | TP_LocalTextSprint of tp_pe_string * tp_pe_string
 
 and tp_patch =
-  | TP_PatchLabel of tp_control_target
-  | TP_PatchGoto of tp_control_target
+  | TP_PatchContinue of tp_control_location
   | TP_PatchBreak of tp_control_location
   | TP_PatchBashFor of ((string * (bool option) * string) list) * (tp_patch list)
   | TP_PatchClearArray of tp_pe_string

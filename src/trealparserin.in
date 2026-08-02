@@ -367,9 +367,7 @@ nonterm(Tp.array_indices_sort_type) Array_Indices_Sort_Type {
 }
 
 nonterm(Tp.tp_action) Tp_Action {
-  -> COLON COLON e1:STRING COLON COLON
-       [ Tp.TP_ActionLabel(Tp.make_control_target e1) ]
-  -> GOTO e1:STRING [ Tp.TP_ActionGoto(Tp.make_control_target e1) ]
+  -> CONTINUE [ Tp.TP_ActionContinue(Tp.current_control_location ()) ]
   -> BREAK [ Tp.TP_ActionBreak(Tp.current_control_location ()) ]
   -> ACTION_BASH_FOR e1:Str_Reg_List BEGIN e2:Tp_Action_List END
        [ Tp.TP_ActionBashFor(e1,e2) ]
@@ -1157,9 +1155,7 @@ nonterm (string option) Optional_File_Version {
 }
 
 nonterm (Tp.tp_patch) Tp_Patch {
-  -> COLON COLON e1:STRING COLON COLON
-       [ Tp.TP_PatchLabel(Tp.make_control_target e1) ]
-  -> GOTO e1:STRING [ Tp.TP_PatchGoto(Tp.make_control_target e1) ]
+  -> CONTINUE [ Tp.TP_PatchContinue(Tp.current_control_location ()) ]
   -> BREAK [ Tp.TP_PatchBreak(Tp.current_control_location ()) ]
   -> SAY e1:Patch_Exp e2:Lse [ Tp.TP_PatchStrRef(e1,e2) ]
   -> SAY_EVALUATED e1:Patch_Exp e2:STRING [ Tp.TP_PatchStrRefEvaluated(e1,e2) ]

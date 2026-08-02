@@ -1,5 +1,0 @@
-BACKUP ~backup~
-AUTHOR ~WeiDU regression tests~
-
-BEGIN ~Invalid undefined GOTO~
-GOTO missing_label
