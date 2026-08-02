@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/fix-linux-remote-builds
+  pull_request:
+    branches:
+      - devel
   workflow_dispatch:
 
 permissions:
