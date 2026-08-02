@@ -109,6 +109,8 @@ jobs:
           cp .ci/apply-issue-364.py "$RUNNER_TEMP/apply-issue-364.py"
           cp .ci/refine-issue-364.py "$RUNNER_TEMP/refine-issue-364.py"
           git checkout -B "$FINAL_BRANCH" origin/devel
+          git reset --hard origin/devel
+          git clean -fdx
           python3 "$RUNNER_TEMP/apply-issue-364.py"
           python3 "$RUNNER_TEMP/refine-issue-364.py"
           git diff --check
