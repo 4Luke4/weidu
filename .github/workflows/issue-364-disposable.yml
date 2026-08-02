@@ -7,13 +7,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  build-and-test:
+  build-test-and-publish:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Apply proposed patch
         run: git apply --check .ci/issue-364.patch && git apply .ci/issue-364.patch
@@ -49,9 +51,11 @@ jobs:
           from pathlib import Path
 
           source = Path("src/tpaction.ml").read_text(encoding="utf-8")
-          assert "TP_PatchStringTextually" in source
-          assert "filler_pattern" in source
-          assert "number + 3" not in source[source.index("let kitlist_action"):source.index("let when_exists")]
+          action = source[source.index("let kitlist_action"):source.index("let when_exists")]
+          assert "TP_PatchStringTextually" in action
+          assert "filler_pattern" in action
+          assert "number + 3" not in action
+          assert "TP_Patch2DA" not in action
 
           def replace_filler(table: str, replacement: str) -> str:
               filler = next(
@@ -72,6 +76,7 @@ jobs:
           classic_tokens = next(line.split() for line in classic_result.splitlines() if "A7_TESTKIT" in line)
           assert classic_tokens == classic_row.split()
           assert len(classic_tokens) == 9
+          assert classic_result.count("A7_TESTKIT") == 1
 
           ee = """2DA V1.0
           *
@@ -86,5 +91,22 @@ jobs:
           assert ee_tokens == ee_row.split()
           assert len(ee_tokens) == 10
           assert ee_tokens[-1] == "A7_TESTKIT"
+          assert ee_result.count("A7_TESTKIT") == 2
           assert "32    * * * * * * * * *" not in ee_result
           PY
+
+      - name: Publish clean final branch
+        env:
+          FINAL_BRANCH: fix/issue-364-add-kit-filler-row
+        run: |
+          cp .ci/issue-364.patch "$RUNNER_TEMP/issue-364.patch"
+          git checkout -B "$FINAL_BRANCH" origin/devel
+          git apply --check "$RUNNER_TEMP/issue-364.patch"
+          git apply "$RUNNER_TEMP/issue-364.patch"
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/tpaction.ml doc/base.tex
+          git commit -m "Fix ADD_KIT filler-row replacement" \
+            -m "CI-Validation: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          git push --force origin "$FINAL_BRANCH"
