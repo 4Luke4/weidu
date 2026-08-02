@@ -29,7 +29,7 @@ jobs:
       - name: Install native dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes build-essential cmake flex bison opam
+          sudo apt-get install --yes build-essential cmake flex libfl-dev bison opam
 
       - name: Create unsafe-string OCaml switch
         run: |
