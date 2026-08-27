@@ -50,7 +50,7 @@ jobs:
           export PATH="$PATH:$PWD/bin"
           eval "$(opam env)"
           mkdir -p obj/x86_LINUX obj/.depend
-          make -j2 weidu
+          make weidu
           cp obj/x86_LINUX/weidu /tmp/weidu-candidate
           make test-structured-resources
           make doc
@@ -62,7 +62,7 @@ jobs:
           eval "$(opam env)"
           git worktree add --detach /tmp/weidu-baseline 16edfd1
           mkdir -p /tmp/weidu-baseline/obj/x86_LINUX /tmp/weidu-baseline/obj/.depend
-          make -C /tmp/weidu-baseline -j2 weidu
+          make -C /tmp/weidu-baseline weidu
           cp /tmp/weidu-baseline/obj/x86_LINUX/weidu /tmp/weidu-baseline-bin
 
       - name: Benchmark candidate through 100,000 files
@@ -117,6 +117,8 @@ jobs:
         if: always()
         run: |
           mkdir -p /tmp/structured-resource-evidence
+          printf 'run=%s\nsha=%s\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" \
+            > /tmp/structured-resource-evidence/ci-status.txt
           if test -d /tmp/benchmark-candidate; then
             cp -r /tmp/benchmark-candidate /tmp/structured-resource-evidence/candidate
           fi
@@ -129,14 +131,14 @@ jobs:
 
       - name: Upload benchmark evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: structured-resource-benchmark-${{ github.sha }}
           path: /tmp/structured-resource-evidence
           if-no-files-found: error
 
       - name: Upload Linux package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: structured-resource-linux-${{ github.sha }}
           path: WeiDU-Linux-*.zip
