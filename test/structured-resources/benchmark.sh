@@ -93,7 +93,7 @@ if ! run_weidu 0 seed.log; then
   sed -n '1,240p' "$work_dir/seed.log" >&2
   exit 1
 fi
-seed="$work_dir/override/benchmark_seed.itm"
+seed="$work_dir/override/bseed.itm"
 if [[ ! -f "$seed" ]] || [[ $(wc -c <"$seed") -ne 2066 ]]; then
   printf '%s\n' 'Benchmark seed is missing or has an unexpected size.' >&2
   exit 1

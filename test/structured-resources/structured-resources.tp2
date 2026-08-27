@@ -251,7 +251,7 @@ CREATE EFF VERSION ~V2.0~ ~effv20~
 
 // A graph rewrite that would require manual table relocation, ownership
 // bookkeeping, and cascading deletion when expressed with raw offsets.
-CREATE ITM VERSION ~V1.0~ ~complex_graph~
+CREATE ITM VERSION ~V1.0~ ~cgraph~
   INSERT_BYTES 0x72 4
   WRITE_ASCII 0x72 ~TAIL~
   PATCH_RESOURCE ITM BEGIN
@@ -336,7 +336,7 @@ CREATE ITM VERSION ~V1.0~ ~complex_graph~
 
 // A complex failed rewrite must roll back the complete graph, not merely
 // the command that raises the final error.
-CREATE SPL VERSION ~V1.0~ ~complex_rollback_source~
+CREATE SPL VERSION ~V1.0~ ~rbsource~
   PATCH_RESOURCE SPL BEGIN
     RESOURCE_APPEND global_effects AS effect BEGIN
       RESOURCE_SET effect opcode = 5
@@ -361,8 +361,8 @@ CREATE SPL VERSION ~V1.0~ ~complex_rollback_source~
     END
   END
 
-COPY + ~override/complex_rollback_source.spl~
-       ~override/complex_rollback.spl~
+COPY + ~override/rbsource.spl~
+       ~override/rbresult.spl~
   SET caught = 0
   PATCH_TRY
     PATCH_RESOURCE SPL BEGIN

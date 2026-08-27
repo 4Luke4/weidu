@@ -52,7 +52,7 @@ if ! grep -qi 'STRUCTURED_RESOURCE_TESTS_OK' "$test_dir/test.log"; then
 fi
 
 cmp "$test_dir/override/s_equiv.itm" "$test_dir/override/l_equiv.itm"
-cmp "$test_dir/override/complex_rollback_source.spl" \
-  "$test_dir/override/complex_rollback.spl"
+cmp "$test_dir/override/rbsource.spl" \
+  "$test_dir/override/rbresult.spl"
 
 printf '%s\n' 'Structured resource regression tests passed.'
