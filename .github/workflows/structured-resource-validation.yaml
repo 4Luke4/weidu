@@ -51,7 +51,10 @@ jobs:
           eval "$(opam env)"
           mkdir -p obj/x86_LINUX obj/.depend
           make weidu
-          cp obj/x86_LINUX/weidu /tmp/weidu-candidate
+          candidate_bin=$(find obj/x86_LINUX -maxdepth 1 -type f \
+            -name 'weidu*' -perm -111 -print -quit)
+          test -n "$candidate_bin"
+          cp "$candidate_bin" /tmp/weidu-candidate
           make test-structured-resources
           make doc
           make linux_zip
@@ -63,7 +66,10 @@ jobs:
           git worktree add --detach /tmp/weidu-baseline 16edfd1
           mkdir -p /tmp/weidu-baseline/obj/x86_LINUX /tmp/weidu-baseline/obj/.depend
           make -C /tmp/weidu-baseline weidu
-          cp /tmp/weidu-baseline/obj/x86_LINUX/weidu /tmp/weidu-baseline-bin
+          baseline_bin=$(find /tmp/weidu-baseline/obj/x86_LINUX -maxdepth 1 \
+            -type f -name 'weidu*' -perm -111 -print -quit)
+          test -n "$baseline_bin"
+          cp "$baseline_bin" /tmp/weidu-baseline-bin
 
       - name: Benchmark candidate through 100,000 files
         env:
