@@ -4908,6 +4908,11 @@ RESOURCE_CLONE source TO collection [BEFORE|AFTER anchor]
 RESOURCE_DELETE handle
 \end{verbatim}
 
+    The \\t{RESOURCE_*} command names are contextual keywords: outside a
+    \\ttref{PATCH_RESOURCE} body they continue to lex as strings and remain
+    available as unquoted identifiers. Only \\t{PATCH_RESOURCE} is added to
+    the global keyword set.
+
     \t{RESOURCE} is the root handle. Collections are \t{ABILITIES},
     \t{GLOBAL_EFFECTS}, and \t{EFFECTS OF} an ability handle. Handles
     introduced with \t{AS} are lexical and opaque: they are not WeiDU

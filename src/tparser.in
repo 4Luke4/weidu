@@ -29,6 +29,7 @@ class tLexer =
       begin
         (* read from stdin *)
         let t = (initial lexbuf) in
+        let t = structured_resource_token (Lexing.lexeme lexbuf) t in
         tokType <- tokenKind t;
 (*      token (string) SOUND;
         token (string) STRING;
@@ -68,6 +69,7 @@ class tLexer =
 let realTables = ref None
 
 let parse start lexbuf =
+  reset_structured_resource_context ();
   let decomp_tables = match !realTables with
   | Some x -> x
   | None ->

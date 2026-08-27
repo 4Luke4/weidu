@@ -83,6 +83,42 @@ let _ = List.iter
 PUT LEXICON *)
     ]
 
+(* RESOURCE_* words are keywords only while lexing a PATCH_RESOURCE body.
+ * This preserves their historical use as unquoted identifiers elsewhere. *)
+let structured_resource_depth = ref 0
+let structured_resource_pending = ref 0
+
+let reset_structured_resource_context () =
+  structured_resource_depth := 0;
+  structured_resource_pending := 0
+
+let structured_resource_token spelling token =
+  match token with
+  | PATCH_RESOURCE when !structured_resource_depth = 0 ->
+      structured_resource_pending := 2;
+      token
+  | _ when !structured_resource_pending = 2 ->
+      structured_resource_pending := 1;
+      token
+  | BEGIN when !structured_resource_pending = 1 ->
+      structured_resource_pending := 0;
+      structured_resource_depth := 1;
+      token
+  | _ when !structured_resource_pending = 1 ->
+      structured_resource_pending := 0;
+      token
+  | BEGIN when !structured_resource_depth > 0 ->
+      incr structured_resource_depth;
+      token
+  | END when !structured_resource_depth > 0 ->
+      decr structured_resource_depth;
+      token
+  | (RESOURCE_GET | RESOURCE_SET | RESOURCE_SPRINT | RESOURCE_FOR_EACH
+    | RESOURCE_APPEND | RESOURCE_INSERT | RESOURCE_CLONE | RESOURCE_DELETE)
+      when !structured_resource_depth = 0 ->
+      STRING spelling
+  | _ -> token
+
 (*
 ** Buffer processor
 *)

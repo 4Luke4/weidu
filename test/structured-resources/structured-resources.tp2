@@ -3,6 +3,15 @@ AUTHOR ~WeiDU regression tests~
 
 BEGIN ~structured resource editor regression tests~
 
+OUTER_SPRINT RESOURCE_GET ~contextual identifier before block~
+OUTER_SPRINT RESOURCE_SET ~contextual identifier before block~
+OUTER_SPRINT RESOURCE_SPRINT ~contextual identifier before block~
+OUTER_SPRINT RESOURCE_FOR_EACH ~contextual identifier before block~
+OUTER_SPRINT RESOURCE_APPEND ~contextual identifier before block~
+OUTER_SPRINT RESOURCE_INSERT ~contextual identifier before block~
+OUTER_SPRINT RESOURCE_CLONE ~contextual identifier before block~
+OUTER_SPRINT RESOURCE_DELETE ~contextual identifier before block~
+
 CREATE ITM VERSION ~V1.0~ ~s_equiv~
   PATCH_RESOURCE ITM BEGIN
     RESOURCE_APPEND abilities AS ability BEGIN
@@ -203,7 +212,7 @@ CREATE SPL VERSION ~V2.0~ ~splv20~
   END
 
 CREATE EFF VERSION ~V2.0~ ~effv20~
-  PATCH_RESOURCE EFF BEGIN
+  PATCH_RESOURCE ~EFF~ BEGIN
     RESOURCE_SET resource opcode = 321
     RESOURCE_SET resource timing = 4096
     RESOURCE_SET resource probability1 = 100
@@ -236,6 +245,8 @@ CREATE ITM VERSION ~V1.0~ ~badlay~
   PATCH_IF caught != 1 BEGIN
     PATCH_FAIL ~malformed layout was not rejected~
   END
+
+OUTER_SPRINT RESOURCE_DELETE ~contextual identifier after block~
 
 AT_NOW ~structured-resources/verify.sh~
 AT_NOW ~sh -c 'printf STRUCTURED_RESOURCE_TESTS_OK'~
