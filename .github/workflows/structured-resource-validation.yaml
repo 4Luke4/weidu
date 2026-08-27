@@ -1,0 +1,143 @@
+name: disposable structured resource validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/structured-resource-patching
+
+permissions:
+  contents: read
+
+concurrency:
+  group: structured-resource-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Linux test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes hevea time zip
+
+      - name: Fetch Elkhound 1.0.3
+        run: |
+          mkdir -p bin
+          curl -fL https://github.com/The-Mod-Elephant/elkhound/releases/download/1.0.3/lin-elkhound -o bin/elkhound
+          chmod +x bin/elkhound
+          ./bin/elkhound
+
+      # PR 381 established this compiler package and the archive repository as
+      # the reliable Linux setup for WeiDU's unsafe-string build.
+      - name: Set up OCaml
+        uses: ocaml/setup-ocaml@v3.5.1
+        with:
+          ocaml-compiler: ocaml-variants.4.08.1+default-unsafe-string
+          opam-repositories: |
+            default: git+https://github.com/ocaml/opam-repository.git
+            archive: git+https://github.com/ocaml/opam-repository-archive.git
+
+      - name: Build and verify candidate
+        run: |
+          export PATH="$PATH:$PWD/bin"
+          eval "$(opam env)"
+          mkdir -p obj/x86_LINUX obj/.depend
+          make -j2 weidu
+          cp obj/x86_LINUX/weidu /tmp/weidu-candidate
+          make test-structured-resources
+          make doc
+          make linux_zip
+
+      - name: Build pre-optimization baseline
+        run: |
+          export PATH="$PATH:$PWD/bin"
+          eval "$(opam env)"
+          git worktree add --detach /tmp/weidu-baseline 16edfd1
+          mkdir -p /tmp/weidu-baseline/obj/x86_LINUX /tmp/weidu-baseline/obj/.depend
+          make -C /tmp/weidu-baseline -j2 weidu
+          cp /tmp/weidu-baseline/obj/x86_LINUX/weidu /tmp/weidu-baseline-bin
+
+      - name: Benchmark candidate through 100,000 files
+        env:
+          BENCH_COUNTS: 1000 10000 100000
+          BENCH_RESULT_DIR: /tmp/benchmark-candidate
+        run: test/structured-resources/benchmark.sh /tmp/weidu-candidate
+
+      - name: Benchmark pre-optimization baseline at 10,000 files
+        env:
+          BENCH_COUNTS: 10000
+          BENCH_REPETITIONS: 5
+          BENCH_RESULT_DIR: /tmp/benchmark-baseline
+        run: test/structured-resources/benchmark.sh /tmp/weidu-baseline-bin
+
+      - name: Evaluate guard optimization
+        run: |
+          set -o pipefail
+          median_patch_time() {
+            workload=$1
+            input=$2
+            awk -F '\t' -v workload="$workload" \
+              'NR > 1 && $1 == workload && $2 == "structured" && $3 == 10000 { print $9 }' \
+              "$input" | sort -n | awk '
+                { values[NR] = $1 }
+                END {
+                  if (NR % 2) print values[(NR + 1) / 2]
+                  else printf "%.3f\n", (values[NR / 2] + values[NR / 2 + 1]) / 2
+                }'
+          }
+          field_before=$(median_patch_time field /tmp/benchmark-baseline/raw.tsv)
+          field_after=$(median_patch_time field /tmp/benchmark-candidate/raw.tsv)
+          structural_before=$(median_patch_time structural /tmp/benchmark-baseline/raw.tsv)
+          structural_after=$(median_patch_time structural /tmp/benchmark-candidate/raw.tsv)
+          awk -v field_before="$field_before" -v field_after="$field_after" \
+              -v structural_before="$structural_before" \
+              -v structural_after="$structural_after" '
+            BEGIN {
+              field_change = 100 * (field_before - field_after) / field_before
+              structural_change = 100 * (structural_before - structural_after) / structural_before
+              print "# Structured-command guard optimization\n"
+              print "Positive percentages are improvements in median PATCH_TIME at 10,000 files.\n"
+              print "| Workload | Before (CPU s) | After (CPU s) | Improvement |"
+              print "|---|---:|---:|---:|"
+              printf "| field | %.3f | %.3f | %.2f%% |\n", field_before, field_after, field_change
+              printf "| structural | %.3f | %.3f | %.2f%% |\n", structural_before, structural_after, structural_change
+              if (!((field_change >= 5 || structural_change >= 5) &&
+                    field_change >= -5 && structural_change >= -5)) exit 1
+            }' | tee /tmp/optimization.md
+
+      - name: Assemble evidence
+        if: always()
+        run: |
+          mkdir -p /tmp/structured-resource-evidence
+          if test -d /tmp/benchmark-candidate; then
+            cp -r /tmp/benchmark-candidate /tmp/structured-resource-evidence/candidate
+          fi
+          if test -d /tmp/benchmark-baseline; then
+            cp -r /tmp/benchmark-baseline /tmp/structured-resource-evidence/baseline
+          fi
+          if test -f /tmp/optimization.md; then
+            cp /tmp/optimization.md /tmp/structured-resource-evidence/
+          fi
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: structured-resource-benchmark-${{ github.sha }}
+          path: /tmp/structured-resource-evidence
+          if-no-files-found: error
+
+      - name: Upload Linux package
+        uses: actions/upload-artifact@v4
+        with:
+          name: structured-resource-linux-${{ github.sha }}
+          path: WeiDU-Linux-*.zip
+          if-no-files-found: error
