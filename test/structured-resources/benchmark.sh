@@ -82,9 +82,9 @@ run_weidu() {
   local log_file=$2
   (
     cd -- "$work_dir"
-    rm -f -- weidu.log BENCHMARK.DEBUG benchmark.debug \
-      SETUP-BENCHMARK.DEBUG setup-benchmark.debug
-    "$weidu_bin" --nogame --no-exit-pause --force-install "$component" \
+    rm -f -- weidu.log benchmark.debug
+    "$weidu_bin" --log benchmark.debug --nogame --no-exit-pause \
+      --force-install "$component" \
       benchmark.tp2 </dev/null >"$log_file" 2>&1
   )
 }
@@ -154,10 +154,10 @@ run_measurement() {
 
   if ! (
     cd -- "$work_dir"
-    rm -f -- weidu.log BENCHMARK.DEBUG benchmark.debug \
-      SETUP-BENCHMARK.DEBUG setup-benchmark.debug "$time_file"
+    rm -f -- weidu.log benchmark.debug "$time_file"
     /usr/bin/time -o "$time_file" -f '%e\t%U\t%S\t%M' \
-      "$weidu_bin" --nogame --no-exit-pause --force-install "$component" \
+      "$weidu_bin" --log benchmark.debug --nogame --no-exit-pause \
+      --force-install "$component" \
       benchmark.tp2 </dev/null >"$log_file" 2>&1
   ); then
     printf '%s\n' "Benchmark failed: $workload/$method at $count files" >&2
@@ -165,8 +165,7 @@ run_measurement() {
     exit 1
   fi
 
-  debug_file=$(find "$work_dir" -maxdepth 1 -type f \
-    -iname '*benchmark.debug' -print -quit)
+  debug_file="$work_dir/benchmark.debug"
   if [[ -z "$debug_file" ]]; then
     printf '%s\n' "WeiDU debug log missing for $workload/$method" >&2
     exit 1
