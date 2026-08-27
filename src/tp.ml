@@ -331,7 +331,32 @@ and tp_local_declaration =
   | TP_LocalSprint of tp_pe_string * tp_pe_tlk_string
   | TP_LocalTextSprint of tp_pe_string * tp_pe_string
 
+and tp_resource_kind =
+  | TP_Resource_ITM
+  | TP_Resource_SPL
+  | TP_Resource_EFF
+
+and tp_resource_collection =
+  | TP_Resource_Abilities
+  | TP_Resource_GlobalEffects
+  | TP_Resource_EffectsOf of string
+
+and tp_resource_position =
+  | TP_Resource_Before of string
+  | TP_Resource_After of string
+
 and tp_patch =
+  | TP_PatchResource of tp_resource_kind * tp_patch list
+  | TP_ResourceGet of string * string * tp_pe_string
+  | TP_ResourceSet of string * string * tp_patchexp
+  | TP_ResourceSprint of string * string * tp_pe_string
+  | TP_ResourceForEach of tp_resource_collection * string * tp_patch list
+  | TP_ResourceAppend of tp_resource_collection * string * tp_patch list
+  | TP_ResourceInsert of tp_resource_collection * tp_resource_position *
+      string * tp_patch list
+  | TP_ResourceClone of string * tp_resource_collection *
+      tp_resource_position option * string * tp_patch list
+  | TP_ResourceDelete of string
   | TP_PatchBashFor of ((string * (bool option) * string) list) * (tp_patch list)
   | TP_PatchClearArray of tp_pe_string
   | TP_PatchDefineArray of tp_pe_string * string list

@@ -189,7 +189,7 @@ let rec process_patch2_real process_action tp our_lang patch_filename game buff 
   let process_patch2 = process_patch2_real process_action tp our_lang in
   process_patch1 patch_filename game buff p ;
 
-  Stats.time "process_patch2" (fun () ->
+  let result = Stats.time "process_patch2" (fun () ->
     let bounds_check_write idx size (str : string) =
       let len = String.length buff in
       let out_of_bounds = (idx < 0 || (idx + size) > len) in
@@ -202,6 +202,76 @@ let rec process_patch2_real process_action tp our_lang patch_filename game buff 
       ()
     in
     match p with
+    | TP_PatchResource(kind,patches) ->
+        if Tpresource.is_active () then
+          Tpresource.error "nested PATCH_RESOURCE blocks are not allowed";
+        let editor = Tpresource.parse kind buff in
+        let guarded_buffer = String.copy buff in
+        Tpresource.activate editor;
+        begin try
+          ignore (List.fold_left (fun current patch ->
+            process_patch2 patch_filename game current patch)
+            guarded_buffer patches);
+          let result = Tpresource.serialize editor in
+          Tpresource.deactivate ();
+          result
+        with exn ->
+          Tpresource.deactivate ();
+          raise exn
+        end
+
+    | TP_ResourceGet(handle,field,name) ->
+        let name = eval_pe_str name in
+        (match Tpresource.get handle field with
+         | Tpresource.Numeric value -> Var.set_int32 name value
+         | Tpresource.Text value -> Var.set_string name value);
+        buff
+
+    | TP_ResourceSet(handle,field,expression) ->
+        Tpresource.set handle field (eval_pe buff game expression);
+        buff
+
+    | TP_ResourceSprint(handle,field,expression) ->
+        let value = Var.get_string (eval_pe_str expression) in
+        Tpresource.sprint handle field value;
+        buff
+
+    | TP_ResourceForEach(collection,handle,patches) ->
+        let current = ref buff in
+        Tpresource.for_each collection handle (fun () ->
+          current := List.fold_left (fun buffer patch ->
+            process_patch2 patch_filename game buffer patch)
+            !current patches);
+        !current
+
+    | TP_ResourceAppend(collection,handle,patches) ->
+        let current = ref buff in
+        Tpresource.append collection handle (fun () ->
+          current := List.fold_left (fun buffer patch ->
+            process_patch2 patch_filename game buffer patch)
+            !current patches);
+        !current
+
+    | TP_ResourceInsert(collection,position,handle,patches) ->
+        let current = ref buff in
+        Tpresource.insert collection position handle (fun () ->
+          current := List.fold_left (fun buffer patch ->
+            process_patch2 patch_filename game buffer patch)
+            !current patches);
+        !current
+
+    | TP_ResourceClone(source,collection,position,handle,patches) ->
+        let current = ref buff in
+        Tpresource.clone source collection position handle (fun () ->
+          current := List.fold_left (fun buffer patch ->
+            process_patch2 patch_filename game buffer patch)
+            !current patches);
+        !current
+
+    | TP_ResourceDelete(handle) ->
+        Tpresource.delete_handle handle;
+        buff
+
     | TP_PatchReadByte(_)
     | TP_PatchReadSByte(_)
     | TP_PatchReadShort(_)
@@ -479,7 +549,10 @@ let rec process_patch2_real process_action tp our_lang patch_filename game buff 
         try
           List.fold_left (fun acc elt ->
             process_patch2 patch_filename game acc elt) buff pl
-        with e ->
+        with
+        | (Tpresource.Error _ as e) when Tpresource.is_active () ->
+          raise e
+        | e ->
           current_exception := e;
           let e = printexc_to_string e in
           Var.set_string "ERROR_MESSAGE" e;
@@ -2900,4 +2973,8 @@ let rec process_patch2_real process_action tp our_lang patch_filename game buff 
               process_patch2 patch_filename game acc patch) buff patch_list in
             buff) ()
         end
-                              ) () (* end: process_patch2 *)
+                              ) () in (* end: process_patch2 *)
+  if Tpresource.is_active () && result <> Tpresource.original_buffer () then
+    Tpresource.error
+      "ordinary patch command mutated the buffer inside PATCH_RESOURCE";
+  result

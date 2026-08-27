@@ -23,7 +23,7 @@
 include Configuration
 
 # Just a target to be used by default
-.PHONY: weidu doc all
+.PHONY: weidu doc all test-structured-resources
 all : weidu
 # "make weinstall" if you want weinstall
 
@@ -84,6 +84,8 @@ ifeq ($(shell uname -s),Linux)
 	cp $(PROJECT_EXECUTABLE) .
 endif
 
+test-structured-resources: weidu
+	test/structured-resources/run_tests.sh $(PROJECT_EXECUTABLE)
 ifeq ($(shell uname -s),Darwin)
 	@$(NARRATIVE) Linking Darwin executable
 	$(CAMLLINK) -o $@ \

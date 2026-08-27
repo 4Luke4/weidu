@@ -31,6 +31,31 @@ let seven_patch_exp v1 v2 v3 v4 v5 v6 v7 =
 let eight_patch_exp e1 v1 v2 v3 v4 v5 v6 v7 =
   let g x = Tp.get_pe_int (string_of_int x) in
   e1, g v1, g v2, g v3, g v4, g v5, g v6, g v7
+
+let resource_kind value = match String.uppercase value with
+  | "ITM" -> Tp.TP_Resource_ITM
+  | "SPL" -> Tp.TP_Resource_SPL
+  | "EFF" -> Tp.TP_Resource_EFF
+  | _ -> failwith (Printf.sprintf
+      "PATCH_RESOURCE: expected ITM, SPL, or EFF; found %S" value)
+
+let resource_collection value = match String.uppercase value with
+  | "ABILITIES" -> Tp.TP_Resource_Abilities
+  | "GLOBAL_EFFECTS" -> Tp.TP_Resource_GlobalEffects
+  | _ -> failwith (Printf.sprintf
+      "PATCH_RESOURCE: expected ABILITIES or GLOBAL_EFFECTS; found %S" value)
+
+let resource_effect_collection first connector handle =
+  if String.uppercase first <> "EFFECTS" || String.uppercase connector <> "OF" then
+    failwith (Printf.sprintf
+      "PATCH_RESOURCE: expected EFFECTS OF <handle>; found %S %S"
+      first connector);
+  Tp.TP_Resource_EffectsOf handle
+
+let require_resource_word expected actual =
+  if String.uppercase actual <> expected then
+    failwith (Printf.sprintf "PATCH_RESOURCE: expected %s; found %S"
+      expected actual)
 }
 
 
@@ -1159,6 +1184,25 @@ nonterm (Tp.tp_patch) Tp_Patch {
   -> LAUNCH_PATCH_FUNCTION e1:STRING e2:LaunchFunctionIntVar
      e3:LaunchFunctionStrVar e4:LaunchFunctionRet e5:LaunchFunctionRetArray END
        [ Tp.TP_Launch_Patch_Function(e1,true,e2,e3,e4,e5) ]
+  -> PATCH_RESOURCE e1:STRING BEGIN e2:Tp_Patch_List END
+       [ Tp.TP_PatchResource(resource_kind e1,e2) ]
+  -> RESOURCE_GET e1:STRING e2:STRING e3:STRING e4:Patch_String_Left
+       [ require_resource_word "INTO" e3; Tp.TP_ResourceGet(e1,e2,e4) ]
+  -> RESOURCE_SET e1:STRING e2:STRING EQUALS e3:Patch_Exp
+       [ Tp.TP_ResourceSet(e1,e2,e3) ]
+  -> RESOURCE_SPRINT e1:STRING e2:STRING e3:Patch_String_Right
+       [ Tp.TP_ResourceSprint(e1,e2,e3) ]
+  -> RESOURCE_FOR_EACH e1:Resource_Collection AS e2:STRING BEGIN e3:Tp_Patch_List END
+       [ Tp.TP_ResourceForEach(e1,e2,e3) ]
+  -> RESOURCE_APPEND e1:Resource_Collection AS e2:STRING BEGIN e3:Tp_Patch_List END
+       [ Tp.TP_ResourceAppend(e1,e2,e3) ]
+  -> RESOURCE_INSERT e1:Resource_Collection e2:Resource_Position AS e3:STRING
+       BEGIN e4:Tp_Patch_List END
+       [ Tp.TP_ResourceInsert(e1,e2,e3,e4) ]
+  -> RESOURCE_CLONE e1:STRING e2:STRING e3:Resource_Collection
+       e4:Optional_Resource_Position AS e5:STRING BEGIN e6:Tp_Patch_List END
+       [ require_resource_word "TO" e2; Tp.TP_ResourceClone(e1,e3,e4,e5,e6) ]
+  -> RESOURCE_DELETE e1:STRING [ Tp.TP_ResourceDelete(e1) ]
   -> REPLACE e1:Optional_Case_Sensitive e2:Optional_Match_Exact e3:STRING e4:Lse
        [ Tp.TP_PatchString(e1,e2,e3,e4) ]
   -> REPLACE_TEXTUALLY e1:Optional_Case_Sensitive e2:Optional_Match_Exact e3:STRING e4:STRING
@@ -1454,6 +1498,22 @@ nonterm (Tp.tp_local_declaration list) Tp_Local_Declaration_List_Rev {
 
 nonterm (Tp.tp_local_declaration list) Tp_Local_Declaration_List {
   -> e2:Tp_Local_Declaration_List_Rev [ List.rev e2 ]
+}
+
+nonterm (Tp.tp_resource_collection) Resource_Collection {
+  -> e1:STRING [ resource_collection e1 ]
+  -> e1:STRING e2:STRING e3:STRING
+       [ resource_effect_collection e1 e2 e3 ]
+}
+
+nonterm (Tp.tp_resource_position) Resource_Position {
+  -> BEFORE e1:STRING [ Tp.TP_Resource_Before e1 ]
+  -> AFTER e1:STRING [ Tp.TP_Resource_After e1 ]
+}
+
+nonterm (Tp.tp_resource_position option) Optional_Resource_Position {
+  -> [ None ]
+  -> e1:Resource_Position [ Some e1 ]
 }
 
 nonterm (Tp.tp_local_declaration) Tp_Local_Declaration {

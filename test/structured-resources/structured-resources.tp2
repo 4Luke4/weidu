@@ -1,0 +1,241 @@
+BACKUP ~structured-resources/backup~
+AUTHOR ~WeiDU regression tests~
+
+BEGIN ~structured resource editor regression tests~
+
+CREATE ITM VERSION ~V1.0~ ~s_equiv~
+  PATCH_RESOURCE ITM BEGIN
+    RESOURCE_APPEND abilities AS ability BEGIN
+      RESOURCE_SET ability header_type = 2
+      RESOURCE_SET ability range = 30
+      RESOURCE_APPEND effects OF ability AS effect BEGIN
+        RESOURCE_SET effect opcode = 216
+        RESOURCE_SET effect parameter1 = 2
+        RESOURCE_SPRINT effect resource ~EFFTEST~
+      END
+    END
+  END
+
+CREATE ITM VERSION ~V1.0~ ~l_equiv~
+  INSERT_BYTES 0x72 0x68
+  WRITE_SHORT 0x68 1
+  WRITE_LONG 0x6a 0xaa
+  WRITE_BYTE 0x72 2
+  WRITE_SHORT 0x80 30
+  WRITE_SHORT 0x90 1
+  WRITE_SHORT 0x92 0
+  WRITE_SHORT 0xaa 216
+  WRITE_LONG 0xae 2
+  WRITE_ASCII 0xbe ~EFFTEST~ (8)
+
+CREATE ITM VERSION ~V1.0~ ~lifecycle~
+  WRITE_ASCII 0x5f ~Z~
+  READ_ASCII 0 before_noop (BUFFER_LENGTH)
+  PATCH_RESOURCE ITM BEGIN
+    RESOURCE_GET resource price INTO initial_price
+  END
+  READ_ASCII 0 after_noop (BUFFER_LENGTH)
+  PATCH_IF NOT (~%before_noop%~ STRING_EQUAL_CASE ~%after_noop%~) BEGIN
+    PATCH_FAIL ~PATCH_RESOURCE no-op changed an ITM buffer~
+  END
+
+  PATCH_RESOURCE ITM BEGIN
+    RESOURCE_SET resource price = 1234
+    RESOURCE_SPRINT resource inventory_icon ~TICON~
+    RESOURCE_APPEND global_effects AS global BEGIN
+      RESOURCE_SET global opcode = 7
+    END
+    RESOURCE_APPEND abilities AS ability BEGIN
+      RESOURCE_SET ability header_type = 2
+      RESOURCE_SET ability range = 20
+      RESOURCE_APPEND effects OF ability AS effect BEGIN
+        RESOURCE_SET effect opcode = 10
+        RESOURCE_CLONE effect TO effects OF ability AFTER effect AS copy BEGIN
+          RESOURCE_SET copy opcode = 11
+        END
+      END
+      RESOURCE_APPEND effects OF ability AS effect BEGIN
+        RESOURCE_SET effect opcode = 20
+      END
+      RESOURCE_INSERT effects OF ability BEFORE effect AS inserted BEGIN
+        RESOURCE_SET inserted opcode = 15
+      END
+      RESOURCE_FOR_EACH effects OF ability AS candidate BEGIN
+        RESOURCE_GET candidate opcode INTO candidate_opcode
+        PATCH_IF candidate_opcode = 15 BEGIN
+          RESOURCE_DELETE candidate
+        END
+      END
+    END
+    RESOURCE_FOR_EACH abilities AS original BEGIN
+      RESOURCE_CLONE original TO abilities AFTER original AS cloned BEGIN
+        RESOURCE_SET cloned range = 30
+      END
+      RESOURCE_DELETE original
+    END
+    RESOURCE_FOR_EACH global_effects AS global BEGIN
+      RESOURCE_DELETE global
+    END
+  END
+  READ_LONG 0x34 actual_price
+  READ_SHORT 0x68 actual_abilities
+  READ_LONG 0x6a actual_effect_offset
+  READ_SHORT 0x70 actual_globals
+  READ_SHORT 0x90 actual_effect_count
+  READ_SHORT 0x92 actual_effect_index
+  READ_SHORT 0xaa actual_opcode_1
+  READ_SHORT 0xda actual_opcode_2
+  READ_SHORT 0x10a actual_opcode_3
+  PATCH_IF actual_price != 1234 OR actual_abilities != 1 OR
+           actual_effect_offset != 0xaa OR actual_globals != 0 OR
+           actual_effect_count != 3 OR actual_effect_index != 0 OR
+           actual_opcode_1 != 10 OR actual_opcode_2 != 11 OR
+           actual_opcode_3 != 20 OR BUFFER_LENGTH != 0x13a BEGIN
+    PATCH_FAIL ~ITM lifecycle serialization failed~
+  END
+
+  SET caught = 0
+  PATCH_TRY
+    PATCH_RESOURCE ITM BEGIN
+      RESOURCE_SET resource price = 9999
+      WRITE_LONG 0x34 1
+    END
+  WITH
+    DEFAULT
+      SET caught = 1
+  END
+  READ_LONG 0x34 atomic_price
+  PATCH_IF caught != 1 OR atomic_price != 1234 BEGIN
+    PATCH_FAIL ~ordinary buffer mutation was not rejected atomically~
+  END
+
+  SET caught = 0
+  PATCH_TRY
+    PATCH_RESOURCE ITM BEGIN
+      PATCH_RESOURCE ITM BEGIN END
+    END
+  WITH
+    DEFAULT
+      SET caught = 1
+  END
+  PATCH_IF caught != 1 BEGIN
+    PATCH_FAIL ~nested PATCH_RESOURCE was not rejected~
+  END
+
+  SET caught = 0
+  PATCH_TRY
+    PATCH_RESOURCE ITM BEGIN
+      RESOURCE_SET resource stack_amount = 65536
+    END
+  WITH
+    DEFAULT
+      SET caught = 1
+  END
+  PATCH_IF caught != 1 BEGIN
+    PATCH_FAIL ~out-of-range U16 write was not rejected~
+  END
+
+CREATE ITM VERSION ~V1.1~ ~itmv11~
+  PATCH_RESOURCE ITM BEGIN
+    RESOURCE_SPRINT resource pickup_sound ~PICKUP~
+    RESOURCE_SPRINT resource dialog ~DIALOG~
+    RESOURCE_SET resource conversable_label = 42
+  END
+  READ_ASCII 0x58 pickup (8) NULL
+  READ_ASCII 0x72 dialog (8) NULL
+  READ_LONG 0x7a label
+  PATCH_IF NOT (~%pickup%~ STRING_EQUAL_CASE ~PICKUP~) OR
+           NOT (~%dialog%~ STRING_EQUAL_CASE ~DIALOG~) OR label != 42 BEGIN
+    PATCH_FAIL ~ITM V1.1 fields failed~
+  END
+
+CREATE ITM VERSION ~V2.0~ ~itmv20~
+  PATCH_RESOURCE ITM BEGIN
+    RESOURCE_APPEND abilities AS ability BEGIN
+      RESOURCE_SET ability flags = 0x1234
+      RESOURCE_SET ability attack_type_flags = 0x5678
+    END
+  END
+  READ_SHORT 0xa8 v2_flags
+  READ_SHORT 0xaa v2_attack_flags
+  PATCH_IF v2_flags != 0x1234 OR v2_attack_flags != 0x5678 BEGIN
+    PATCH_FAIL ~ITM V2.0 split ability flags failed~
+  END
+
+CREATE SPL VERSION ~V1.0~ ~splv1~
+  PATCH_RESOURCE SPL BEGIN
+    RESOURCE_SET resource spell_level = 5
+    RESOURCE_APPEND global_effects AS effect BEGIN
+      RESOURCE_SET effect opcode = 1
+    END
+    RESOURCE_APPEND abilities AS ability BEGIN
+      RESOURCE_SET ability min_level = 3
+      RESOURCE_SET ability projectile = 77
+      RESOURCE_APPEND effects OF ability AS effect BEGIN
+        RESOURCE_SET effect opcode = 12
+      END
+    END
+  END
+  READ_LONG 0x34 spell_level
+  READ_SHORT 0x68 spell_abilities
+  READ_LONG 0x6a spell_effect_offset
+  READ_SHORT 0x70 spell_globals
+  READ_SHORT 0x82 ability_level
+  READ_SHORT 0x98 ability_projectile
+  READ_SHORT 0x9a global_opcode
+  READ_SHORT 0xca ability_opcode
+  PATCH_IF spell_level != 5 OR spell_abilities != 1 OR
+           spell_effect_offset != 0x9a OR spell_globals != 1 OR
+           ability_level != 3 OR ability_projectile != 77 OR
+           global_opcode != 1 OR ability_opcode != 12 BEGIN
+    PATCH_FAIL ~SPL V1 lifecycle failed~
+  END
+
+CREATE SPL VERSION ~V2.0~ ~splv20~
+  PATCH_RESOURCE SPL BEGIN
+    RESOURCE_SET resource duration_modifier_level = 4
+    RESOURCE_SET resource duration_modifier_rounds = 6
+  END
+  READ_BYTE 0x72 duration_level
+  READ_BYTE 0x73 duration_rounds
+  PATCH_IF duration_level != 4 OR duration_rounds != 6 BEGIN
+    PATCH_FAIL ~SPL V2.0 fields failed~
+  END
+
+CREATE EFF VERSION ~V2.0~ ~effv20~
+  PATCH_RESOURCE EFF BEGIN
+    RESOURCE_SET resource opcode = 321
+    RESOURCE_SET resource timing = 4096
+    RESOURCE_SET resource probability1 = 100
+    RESOURCE_SPRINT resource resource ~SPWI112~
+    RESOURCE_SPRINT resource variable_name ~structured_test~
+    RESOURCE_SET resource caster_level = 17
+  END
+  READ_LONG 0x10 eff_opcode
+  READ_SHORT 0x24 eff_timing
+  READ_SHORT 0x2c eff_probability
+  READ_ASCII 0x30 eff_resource (8) NULL
+  READ_ASCII 0xa8 eff_variable (32) NULL
+  READ_LONG 0xc8 eff_level
+  PATCH_IF eff_opcode != 321 OR eff_timing != 4096 OR
+           eff_probability != 100 OR eff_level != 17 OR
+           NOT (~%eff_resource%~ STRING_EQUAL_CASE ~SPWI112~) OR
+           NOT (~%eff_variable%~ STRING_EQUAL_CASE ~structured_test~) BEGIN
+    PATCH_FAIL ~EFF V2.0 fields failed~
+  END
+
+CREATE ITM VERSION ~V1.0~ ~malformed~
+  WRITE_LONG 0x64 1
+  SET caught = 0
+  PATCH_TRY
+    PATCH_RESOURCE ITM BEGIN END
+  WITH
+    DEFAULT
+      SET caught = 1
+  END
+  PATCH_IF caught != 1 BEGIN
+    PATCH_FAIL ~malformed layout was not rejected~
+  END
+
+AT_NOW ~structured-resources/verify.sh~
+AT_NOW ~sh -c 'printf STRUCTURED_RESOURCE_TESTS_OK'~

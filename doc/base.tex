@@ -4889,6 +4889,124 @@ or & \DEFINE{PATCH_IF} \ttref{value} \Ob \t{THEN} \Oe \t{BEGIN}
 
     See the \ahrefloc{sec-match-and-try}{\t{MATCH} and \t{TRY} tutorial} for additional information.
   \\
+  or & \DEFINE{PATCH_RESOURCE} format \t{BEGIN} \ttref{patch} \Slist
+    \t{END} &
+    Opens a transactional, schema-aware editor for the current buffer.
+    The format is \t{ITM}, \t{SPL}, or \t{EFF}. Supported versions are
+    ITM V1, V1.1 and V2.0; SPL V1 and V2.0; and EFF V2.0.
+
+    The commands available inside the block are:
+\begin{verbatim}
+RESOURCE_GET handle field INTO variable
+RESOURCE_SET handle field = value
+RESOURCE_SPRINT handle field string
+RESOURCE_FOR_EACH collection AS handle BEGIN patches END
+RESOURCE_APPEND collection AS handle BEGIN patches END
+RESOURCE_INSERT collection BEFORE|AFTER anchor AS handle BEGIN patches END
+RESOURCE_CLONE source TO collection [BEFORE|AFTER anchor]
+    AS handle BEGIN patches END
+RESOURCE_DELETE handle
+\end{verbatim}
+
+    \t{RESOURCE} is the root handle. Collections are \t{ABILITIES},
+    \t{GLOBAL_EFFECTS}, and \t{EFFECTS OF} an ability handle. Handles
+    introduced with \t{AS} are lexical and opaque: they are not WeiDU
+    variables and cannot be used after their block. Iteration uses a
+    snapshot: appended records are not visited in the same iteration,
+    records deleted before their turn are skipped, and deleting the
+    current record is permitted.
+
+    \ttref{RESOURCE_APPEND} and \ttref{RESOURCE_INSERT} create a zeroed
+    record of the schema-required size. \ttref{RESOURCE_CLONE} copies an
+    effect byte-for-byte; cloning an ability also clones all effects owned
+    by that ability. Deleting an ability deletes its owned effects.
+
+    \ttref{RESOURCE_GET} stores numeric fields as integers and textual
+    fields as strings. \ttref{RESOURCE_SET} accepts numeric fields only;
+    \ttref{RESOURCE_SPRINT} accepts fixed strings and resource references.
+    Values outside the field's signed or unsigned width and strings longer
+    than the fixed field are errors. Short strings are NUL-padded.
+
+    Signatures, versions, offsets, counts and effect indices are readable
+    but read-only. The editor validates signatures, minimum sizes, table
+    bounds, multiplication overflow, table overlap and unambiguous effect
+    ownership before executing the body. It updates all derived offsets,
+    counts and indices on commit, validates the serialized result again,
+    and preserves unexposed bytes, gaps and trailing data byte-for-byte.
+    A no-op block is byte-identical.
+
+    The block is atomic with respect to the resource buffer. Any structured
+    error discards all resource edits. An enclosing \ttref{PATCH_TRY} may
+    catch that error and receives the original buffer, but a
+    \ttref{PATCH_TRY} inside the block cannot suppress it. Variable and log
+    side effects are not rolled back. Nested \ttref{PATCH_RESOURCE} blocks
+    and ordinary patches that mutate the buffer are rejected.
+
+    Root fields common to ITM versions are:
+\begin{verbatim}
+signature version unidentified_name identified_name flags item_type
+usability_flags item_animation min_level price stack_amount inventory_icon
+lore_to_id ground_icon weight unidentified_description
+identified_description enchantment abilities_offset abilities_count
+effects_offset global_effects_index global_effects_count
+\end{verbatim}
+    ITM V1 additionally exposes \t{used_up_item}, \t{description_icon},
+    and the minimum-stat and kit-usability fields. ITM V1.1 exposes
+    \t{drop_sound}, \t{pickup_sound}, \t{dialog},
+    \t{conversable_label}, and \t{paperdoll_colour}. ITM V2.0 exposes
+    \t{replacement_item}, \t{description_icon}, and the minimum-stat and
+    kit-usability fields.
+
+    ITM ability fields are:
+\begin{verbatim}
+header_type id_requirement location alternative_dice_sides icon target
+target_count range launcher alternative_dice_thrown speed
+alternative_damage_bonus thac0_bonus dicesize primary_type dicenumber
+secondary_type damage_bonus damage_type effects_count effects_index charges
+drained flags projectile animation_overhand animation_backhand
+animation_thrust arrow bolt bullet
+\end{verbatim}
+    V2.0 also exposes \t{attack_type_flags}; its \t{flags} and
+    \t{attack_type_flags} are separate 16-bit fields.
+
+    SPL root fields are:
+\begin{verbatim}
+signature version name completion_sound flags spell_type exclusion_flags
+casting_graphics primary_type secondary_type spell_level spellbook_icon
+description abilities_offset abilities_count effects_offset
+global_effects_index global_effects_count
+\end{verbatim}
+    V2.0 also exposes \t{duration_modifier_level} and
+    \t{duration_modifier_rounds}. SPL ability fields are:
+\begin{verbatim}
+header_type flags location icon target target_count range min_level speed
+times_per_day effects_count effects_index projectile
+\end{verbatim}
+
+    Embedded ITM/SPL effect fields are:
+\begin{verbatim}
+opcode target power parameter1 parameter2 timing resist_dispel duration
+probability1 probability2 resource dicenumber dicesize savingthrow savebonus
+special
+\end{verbatim}
+
+    EFF V2.0 root fields are:
+\begin{verbatim}
+signature version body_signature body_version opcode target power parameter1
+parameter2 timing duration probability1 probability2 resource dicenumber
+dicesize savingthrow savebonus special primary_type resist_dispel parameter3
+parameter4 parameter5 time_applied resource2 resource3 caster_x caster_y
+target_x target_y parent_resource_type parent_resource parent_resource_flags
+projectile variable_name caster_level secondary_type
+\end{verbatim}
+
+    Compared with ad hoc patch functions, this interface centralises format
+    knowledge, enforces widths and record ownership, relocates dependent
+    tables automatically, makes structural operations composable, and gives
+    malformed input and failed initialisers one deterministic atomic failure
+    path. Existing patch functions and byte-oriented commands are unchanged.
+  \\
+
   or & \DEFINE{PATCH_RERAISE} &
      When used inside a \ttref{PATCH_TRY}, the matched error is re-raised.
 

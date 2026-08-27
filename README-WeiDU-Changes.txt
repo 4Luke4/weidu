@@ -1,4 +1,8 @@
 Version 251:
+  * Add transactional PATCH_RESOURCE editing for ITM V1/V1.1/V2.0,
+    SPL V1/V2.0 and EFF V2.0 resources, with named typed fields and
+    first-class iteration, append, insert, deep-clone and delete
+    operations for abilities and effects.
   * CREATE called within CREATE works as expected.
   * CREATE sets SOURCE_* and DEST_* variables.
   * Auto-update does not fail if the filename of the newest WeiDU
