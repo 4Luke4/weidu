@@ -1,0 +1,193 @@
+BACKUP ~benchmark/backup~
+AUTHOR ~WeiDU structured resource benchmark~
+
+DEFINE_PATCH_FUNCTION BENCHMARK_DIRECT_FIELD
+BEGIN
+  READ_LONG 0x64 ability_offset
+  READ_SHORT 0x68 ability_count
+  READ_LONG 0x6a effect_offset
+  READ_SHORT 0x70 global_count
+
+  FOR (effect_index = 0 ; effect_index < global_count ; ++effect_index) BEGIN
+    SET effect = effect_offset + effect_index * 0x30
+    READ_SHORT effect opcode
+    PATCH_IF opcode = 10 BEGIN
+      WRITE_SHORT effect 11
+      WRITE_LONG (effect + 0x04) 12345
+      WRITE_ASCIIE (effect + 0x14) ~BENCHFX~ (8)
+    END
+  END
+
+  FOR (ability_index = 0 ; ability_index < ability_count ; ++ability_index) BEGIN
+    SET ability = ability_offset + ability_index * 0x38
+    WRITE_SHORT (ability + 0x0e) 30
+    READ_SHORT (ability + 0x1e) ability_effect_count
+    READ_SHORT (ability + 0x20) ability_effect_index
+    FOR (local_index = 0 ; local_index < ability_effect_count ; ++local_index) BEGIN
+      SET effect = effect_offset + (ability_effect_index + local_index) * 0x30
+      READ_SHORT effect opcode
+      PATCH_IF opcode = 10 BEGIN
+        WRITE_SHORT effect 11
+        WRITE_LONG (effect + 0x04) 12345
+        WRITE_ASCIIE (effect + 0x14) ~BENCHFX~ (8)
+      END
+    END
+  END
+END
+
+DEFINE_PATCH_FUNCTION BENCHMARK_DIRECT_STRUCTURAL
+BEGIN
+  READ_LONG 0x64 ability_offset
+  READ_SHORT 0x68 original_ability_count
+  READ_LONG 0x6a original_effect_offset
+  READ_SHORT 0x70 global_count
+
+  // Insert copied ability records from the end so every source offset remains
+  // valid until it is read.
+  SET ability_index = original_ability_count - 1
+  WHILE ability_index >= 0 BEGIN
+    SET original = ability_offset + ability_index * 0x38
+    READ_ASCII original cloned_ability (0x38)
+    INSERT_BYTES (original + 0x38) 0x38
+    WRITE_ASCIIE (original + 0x38) ~%cloned_ability%~ (0x38)
+    SET ability_index -= 1
+  END
+
+  SET effect_offset = original_effect_offset + original_ability_count * 0x38
+  WRITE_SHORT 0x68 (original_ability_count * 2)
+  WRITE_LONG 0x6a effect_offset
+
+  // Insert each copied effect block plus one new suffix effect. Descending
+  // order keeps the original effect indices valid during the rewrite.
+  SET ability_index = original_ability_count - 1
+  WHILE ability_index >= 0 BEGIN
+    SET original = ability_offset + ability_index * 2 * 0x38
+    SET clone = original + 0x38
+    READ_SHORT (original + 0x1e) original_effect_count
+    READ_SHORT (original + 0x20) original_effect_index
+    SET source = effect_offset + original_effect_index * 0x30
+    SET copied_size = original_effect_count * 0x30
+    READ_ASCII source cloned_effects (copied_size)
+    SET insertion = source + copied_size
+    INSERT_BYTES insertion (copied_size + 0x30)
+    WRITE_ASCIIE insertion ~%cloned_effects%~ (copied_size)
+    WRITE_SHORT (insertion + copied_size) 99
+    WRITE_LONG (insertion + copied_size + 0x04) 999
+    WRITE_SHORT (clone + 0x0e) 40
+    WRITE_SHORT (clone + 0x1e) (original_effect_count + 1)
+    SET ability_index -= 1
+  END
+
+  // Rebuild every ownership index after all insertions.
+  SET cursor = global_count
+  FOR (ability_index = 0 ;
+       ability_index < original_ability_count ;
+       ++ability_index) BEGIN
+    SET original = ability_offset + ability_index * 2 * 0x38
+    SET clone = original + 0x38
+    READ_SHORT (original + 0x1e) original_effect_count
+    WRITE_SHORT (original + 0x20) cursor
+    SET cursor += original_effect_count
+    WRITE_SHORT (clone + 0x20) cursor
+    SET cursor += original_effect_count + 1
+  END
+END
+
+BEGIN ~Generate benchmark fixture~ DESIGNATED 0
+
+CREATE ITM VERSION ~V1.0~ ~benchmark_seed~
+  PATCH_RESOURCE ITM BEGIN
+    FOR (global_index = 0 ; global_index < 4 ; ++global_index) BEGIN
+      RESOURCE_APPEND global_effects AS global BEGIN
+        RESOURCE_SET global opcode = 10
+        RESOURCE_SET global parameter1 = global_index
+      END
+    END
+    FOR (ability_index = 0 ; ability_index < 4 ; ++ability_index) BEGIN
+      RESOURCE_APPEND abilities AS ability BEGIN
+        RESOURCE_SET ability header_type = 2
+        RESOURCE_SET ability range = 10 + ability_index
+        FOR (effect_index = 0 ; effect_index < 8 ; ++effect_index) BEGIN
+          RESOURCE_APPEND effects OF ability AS effect BEGIN
+            RESOURCE_SET effect opcode = 10
+            RESOURCE_SET effect parameter1 = ability_index * 100 + effect_index
+          END
+        END
+      END
+    END
+  END
+
+BEGIN ~Structured field workload~ DESIGNATED 10
+
+COPY + ~benchmark-input~ ~benchmark-out-field-structured~
+  PATCH_TIME ~bench-field-structured~ BEGIN
+    PATCH_RESOURCE ITM BEGIN
+      RESOURCE_FOR_EACH global_effects AS effect BEGIN
+        RESOURCE_GET effect opcode INTO opcode
+        PATCH_IF opcode = 10 BEGIN
+          RESOURCE_SET effect opcode = 11
+          RESOURCE_SET effect parameter1 = 12345
+          RESOURCE_SPRINT effect resource ~BENCHFX~
+        END
+      END
+      RESOURCE_FOR_EACH abilities AS ability BEGIN
+        RESOURCE_SET ability range = 30
+        RESOURCE_FOR_EACH effects OF ability AS effect BEGIN
+          RESOURCE_GET effect opcode INTO opcode
+          PATCH_IF opcode = 10 BEGIN
+            RESOURCE_SET effect opcode = 11
+            RESOURCE_SET effect parameter1 = 12345
+            RESOURCE_SPRINT effect resource ~BENCHFX~
+          END
+        END
+      END
+    END
+  END
+
+BEGIN ~Purpose-built field workload~ DESIGNATED 11
+
+COPY + ~benchmark-input~ ~benchmark-out-field-direct~
+  PATCH_TIME ~bench-field-direct~ BEGIN
+    LPF BENCHMARK_DIRECT_FIELD END
+  END
+
+BEGIN ~Bundled helper field workload~ DESIGNATED 12
+
+COPY + ~benchmark-input~ ~benchmark-out-field-bundled~
+  PATCH_TIME ~bench-field-bundled~ BEGIN
+    LPF ALTER_ITEM_HEADER INT_VAR range = 30 END
+    LPF ALTER_ITEM_EFFECT
+      INT_VAR
+        check_globals = 1
+        check_headers = 1
+        match_opcode = 10
+        new_opcode = 11
+        parameter1 = 12345
+      STR_VAR
+        resource = ~BENCHFX~
+    END
+  END
+
+BEGIN ~Structured structural workload~ DESIGNATED 20
+
+COPY + ~benchmark-input~ ~benchmark-out-structural-structured~
+  PATCH_TIME ~bench-structural-structured~ BEGIN
+    PATCH_RESOURCE ITM BEGIN
+      RESOURCE_FOR_EACH abilities AS original BEGIN
+        RESOURCE_CLONE original TO abilities AFTER original AS clone BEGIN
+          RESOURCE_SET clone range = 40
+          RESOURCE_APPEND effects OF clone AS suffix BEGIN
+            RESOURCE_SET suffix opcode = 99
+            RESOURCE_SET suffix parameter1 = 999
+          END
+        END
+      END
+    END
+  END
+
+BEGIN ~Purpose-built structural workload~ DESIGNATED 21
+
+COPY + ~benchmark-input~ ~benchmark-out-structural-direct~
+  PATCH_TIME ~bench-structural-direct~ BEGIN
+    LPF BENCHMARK_DIRECT_STRUCTURAL END
+  END

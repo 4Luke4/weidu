@@ -2974,7 +2974,13 @@ let rec process_patch2_real process_action tp our_lang patch_filename game buff 
             buff) ()
         end
                               ) () in (* end: process_patch2 *)
-  if Tpresource.is_active () && result <> Tpresource.original_buffer () then
+  let structured_resource_operation = match p with
+    | TP_ResourceGet(_) | TP_ResourceSet(_) | TP_ResourceSprint(_)
+    | TP_ResourceForEach(_) | TP_ResourceAppend(_) | TP_ResourceInsert(_)
+    | TP_ResourceClone(_) | TP_ResourceDelete(_) -> true
+    | _ -> false in
+  if Tpresource.is_active () && not structured_resource_operation &&
+      result <> Tpresource.original_buffer () then
     Tpresource.error
       "ordinary patch command mutated the buffer inside PATCH_RESOURCE";
   result

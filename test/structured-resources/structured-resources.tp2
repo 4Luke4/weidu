@@ -121,6 +121,22 @@ CREATE ITM VERSION ~V1.0~ ~life~
   SET caught = 0
   PATCH_TRY
     PATCH_RESOURCE ITM BEGIN
+      RESOURCE_FOR_EACH abilities AS ability BEGIN
+        WRITE_LONG 0x34 1
+      END
+    END
+  WITH
+    DEFAULT
+      SET caught = 1
+  END
+  READ_LONG 0x34 nested_atomic_price
+  PATCH_IF caught != 1 OR nested_atomic_price != 1234 BEGIN
+    PATCH_FAIL ~nested ordinary mutation bypassed the resource guard~
+  END
+
+  SET caught = 0
+  PATCH_TRY
+    PATCH_RESOURCE ITM BEGIN
       PATCH_RESOURCE ITM BEGIN END
     END
   WITH
@@ -231,6 +247,157 @@ CREATE EFF VERSION ~V2.0~ ~effv20~
            NOT (~%eff_resource%~ STRING_EQUAL_CASE ~SPWI112~) OR
            NOT (~%eff_variable%~ STRING_EQUAL_CASE ~structured_test~) BEGIN
     PATCH_FAIL ~EFF V2.0 fields failed~
+  END
+
+// A graph rewrite that would require manual table relocation, ownership
+// bookkeeping, and cascading deletion when expressed with raw offsets.
+CREATE ITM VERSION ~V1.0~ ~complex_graph~
+  INSERT_BYTES 0x72 4
+  WRITE_ASCII 0x72 ~TAIL~
+  PATCH_RESOURCE ITM BEGIN
+    RESOURCE_SET resource price = 777
+    RESOURCE_APPEND global_effects AS global BEGIN
+      RESOURCE_SET global opcode = 5
+      RESOURCE_SET global parameter1 = 50
+    END
+    RESOURCE_APPEND abilities AS ability BEGIN
+      RESOURCE_SET ability header_type = 2
+      RESOURCE_SET ability range = 10
+      RESOURCE_APPEND effects OF ability AS effect BEGIN
+        RESOURCE_SET effect opcode = 10
+        RESOURCE_SET effect parameter1 = 1
+      END
+      RESOURCE_APPEND effects OF ability AS effect BEGIN
+        RESOURCE_SET effect opcode = 20
+        RESOURCE_SET effect parameter1 = 2
+      END
+      RESOURCE_APPEND effects OF ability AS effect BEGIN
+        RESOURCE_SET effect opcode = 30
+        RESOURCE_SET effect parameter1 = 3
+      END
+    END
+    RESOURCE_FOR_EACH abilities AS original BEGIN
+      RESOURCE_CLONE original TO abilities AFTER original AS variant BEGIN
+        RESOURCE_SET variant range = 40
+        RESOURCE_SET variant projectile = 99
+        RESOURCE_FOR_EACH effects OF variant AS candidate BEGIN
+          RESOURCE_GET candidate opcode INTO candidate_opcode
+          PATCH_IF candidate_opcode = 10 BEGIN
+            RESOURCE_INSERT effects OF variant BEFORE candidate AS prefix BEGIN
+              RESOURCE_SET prefix opcode = 9
+              RESOURCE_SET prefix parameter1 = 90
+            END
+          END
+          PATCH_IF candidate_opcode = 20 BEGIN
+            RESOURCE_CLONE candidate TO global_effects AS promoted BEGIN
+              RESOURCE_SET promoted opcode = 21
+              RESOURCE_SET promoted parameter1 = 210
+            END
+            RESOURCE_DELETE candidate
+          END
+          PATCH_IF candidate_opcode = 30 BEGIN
+            RESOURCE_SET candidate opcode = 31
+            RESOURCE_SPRINT candidate resource ~GRAPHFX~
+          END
+        END
+        RESOURCE_APPEND effects OF variant AS suffix BEGIN
+          RESOURCE_SET suffix opcode = 40
+          RESOURCE_SET suffix parameter1 = 400
+        END
+      END
+      RESOURCE_DELETE original
+    END
+  END
+  READ_LONG 0x34 graph_price
+  READ_SHORT 0x68 graph_abilities
+  READ_LONG 0x6a graph_effect_offset
+  READ_SHORT 0x70 graph_globals
+  READ_SHORT 0x80 graph_range
+  READ_SHORT 0x90 graph_effect_count
+  READ_SHORT 0x92 graph_effect_index
+  READ_SHORT 0x9c graph_projectile
+  READ_SHORT 0xaa graph_opcode_1
+  READ_SHORT 0xda graph_opcode_2
+  READ_SHORT 0x10a graph_opcode_3
+  READ_SHORT 0x13a graph_opcode_4
+  READ_SHORT 0x16a graph_opcode_5
+  READ_SHORT 0x19a graph_opcode_6
+  READ_ASCII 0x1ca graph_tail (4)
+  PATCH_IF graph_price != 777 OR graph_abilities != 1 OR
+           graph_effect_offset != 0xaa OR graph_globals != 2 OR
+           graph_range != 40 OR graph_effect_count != 4 OR
+           graph_effect_index != 2 OR graph_projectile != 99 OR
+           graph_opcode_1 != 5 OR graph_opcode_2 != 21 OR
+           graph_opcode_3 != 9 OR graph_opcode_4 != 10 OR
+           graph_opcode_5 != 31 OR graph_opcode_6 != 40 OR
+           NOT (~%graph_tail%~ STRING_EQUAL_CASE ~TAIL~) BEGIN
+    PATCH_FAIL ~complex ITM graph rewrite failed~
+  END
+
+// A complex failed rewrite must roll back the complete graph, not merely
+// the command that raises the final error.
+CREATE SPL VERSION ~V1.0~ ~complex_rollback_source~
+  PATCH_RESOURCE SPL BEGIN
+    RESOURCE_APPEND global_effects AS effect BEGIN
+      RESOURCE_SET effect opcode = 5
+    END
+    RESOURCE_APPEND abilities AS ability BEGIN
+      RESOURCE_SET ability min_level = 1
+      RESOURCE_APPEND effects OF ability AS effect BEGIN
+        RESOURCE_SET effect opcode = 10
+      END
+      RESOURCE_APPEND effects OF ability AS effect BEGIN
+        RESOURCE_SET effect opcode = 11
+      END
+    END
+    RESOURCE_APPEND abilities AS ability BEGIN
+      RESOURCE_SET ability min_level = 2
+      RESOURCE_APPEND effects OF ability AS effect BEGIN
+        RESOURCE_SET effect opcode = 20
+      END
+      RESOURCE_APPEND effects OF ability AS effect BEGIN
+        RESOURCE_SET effect opcode = 21
+      END
+    END
+  END
+
+COPY + ~override/complex_rollback_source.spl~
+       ~override/complex_rollback.spl~
+  SET caught = 0
+  PATCH_TRY
+    PATCH_RESOURCE SPL BEGIN
+      RESOURCE_FOR_EACH global_effects AS template BEGIN
+        RESOURCE_FOR_EACH abilities AS ability BEGIN
+          RESOURCE_CLONE template TO effects OF ability AS injected BEGIN
+            RESOURCE_SET injected opcode = 77
+          END
+        END
+        RESOURCE_DELETE template
+      END
+      RESOURCE_FOR_EACH abilities AS original BEGIN
+        RESOURCE_GET original min_level INTO old_level
+        RESOURCE_CLONE original TO abilities AFTER original AS clone BEGIN
+          RESOURCE_SET clone min_level = old_level + 10
+          RESOURCE_FOR_EACH effects OF clone AS effect BEGIN
+            RESOURCE_GET effect opcode INTO rollback_opcode
+            PATCH_IF rollback_opcode = 11 BEGIN
+              RESOURCE_DELETE effect
+            END
+          END
+        END
+        RESOURCE_DELETE original
+      END
+      RESOURCE_APPEND global_effects AS replacement BEGIN
+        RESOURCE_SET replacement opcode = 88
+      END
+      RESOURCE_SET resource signature = 0
+    END
+  WITH
+    DEFAULT
+      SET caught = 1
+  END
+  PATCH_IF caught != 1 BEGIN
+    PATCH_FAIL ~complex graph rollback error was not caught~
   END
 
 CREATE ITM VERSION ~V1.0~ ~badlay~

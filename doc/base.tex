@@ -4908,9 +4908,9 @@ RESOURCE_CLONE source TO collection [BEFORE|AFTER anchor]
 RESOURCE_DELETE handle
 \end{verbatim}
 
-    The \\t{RESOURCE_*} command names are contextual keywords: outside a
-    \\ttref{PATCH_RESOURCE} body they continue to lex as strings and remain
-    available as unquoted identifiers. Only \\t{PATCH_RESOURCE} is added to
+    The \t{RESOURCE_*} command names are contextual keywords: outside a
+    \ttref{PATCH_RESOURCE} body they continue to lex as strings and remain
+    available as unquoted identifiers. Only \t{PATCH_RESOURCE} is added to
     the global keyword set.
 
     \t{RESOURCE} is the root handle. Collections are \t{ABILITIES},
@@ -4946,6 +4946,44 @@ RESOURCE_DELETE handle
     \ttref{PATCH_TRY} inside the block cannot suppress it. Variable and log
     side effects are not rolled back. Nested \ttref{PATCH_RESOURCE} blocks
     and ordinary patches that mutate the buffer are rejected.
+
+    \textbf{Advanced graph rewrite.} The following single transaction deep
+    clones every ability, edits the cloned effects while iterating over a
+    stable snapshot, promotes one effect into the global collection, adds a
+    new effect, and then removes the original ability. WeiDU relocates the
+    tables and rebuilds every count and ownership index at commit.
+\begin{verbatim}
+PATCH_RESOURCE ITM BEGIN
+  RESOURCE_FOR_EACH abilities AS original BEGIN
+    RESOURCE_CLONE original TO abilities AFTER original AS variant BEGIN
+      RESOURCE_SET variant range = 40
+      RESOURCE_FOR_EACH effects OF variant AS candidate BEGIN
+        RESOURCE_GET candidate opcode INTO opcode
+        PATCH_IF opcode = 20 BEGIN
+          RESOURCE_CLONE candidate TO global_effects AS promoted BEGIN
+            RESOURCE_SET promoted opcode = 21
+          END
+          RESOURCE_DELETE candidate
+        END
+      END
+      RESOURCE_APPEND effects OF variant AS suffix BEGIN
+        RESOURCE_SET suffix opcode = 40
+      END
+    END
+    RESOURCE_DELETE original
+  END
+END
+\end{verbatim}
+
+    This pattern can combine nested selection, insertion relative to stable
+    handles, cross-collection cloning, cascading deletion, and preservation
+    of unmodelled trailing bytes. If any late operation fails---for example,
+    an attempt to assign a read-only field---none of the preceding graph edits
+    reach the buffer. An enclosing \ttref{PATCH_TRY} can therefore implement
+    an explicit optional transformation without writing a compensating undo
+    function. The regression fixture in
+    \t{test/structured-resources/structured-resources.tp2} exercises both the
+    successful rewrite and byte-identical rollback of a more involved one.
 
     Root fields common to ITM versions are:
 \begin{verbatim}
@@ -5005,11 +5043,40 @@ target_x target_y parent_resource_type parent_resource parent_resource_flags
 projectile variable_name caster_level secondary_type
 \end{verbatim}
 
-    Compared with ad hoc patch functions, this interface centralises format
-    knowledge, enforces widths and record ownership, relocates dependent
-    tables automatically, makes structural operations composable, and gives
+    \textbf{Comparison with ad hoc functions.} A purpose-built offset function
+    can be smaller and faster for one fixed, well-understood field edit. For a
+    structural rewrite, however, that function must independently duplicate
+    the format contract: version-specific record sizes, checked offset
+    arithmetic, non-overlapping table bounds, effect ownership, descending or
+    otherwise stable relocation order, derived-index repair, and partial-write
+    recovery. Those responsibilities grow with every operation and format
+    variant, and separate helper functions can silently encode incompatible
+    assumptions. This interface centralises that knowledge, enforces field
+    widths and ownership, makes structural operations composable, and gives
     malformed input and failed initialisers one deterministic atomic failure
     path. Existing patch functions and byte-oriented commands are unchanged.
+
+    \textbf{Performance.} Schema parsing, validation, handle dispatch and
+    serialization have a real cost; \ttref{PATCH_RESOURCE} is not intended to
+    outperform the narrowest correct offset function. Its advantage is that
+    the fixed format logic is implemented and audited once rather than repeated
+    in each mod. Performance should be measured for the relevant resource
+    shape and file count, including filesystem costs, instead of inferred from
+    the number of TP2 statements.
+
+    The Linux benchmark in \t{test/structured-resources/benchmark.sh} compares
+    byte-identical field edits against both bundled \t{ALTER_ITEM_*} helpers
+    and a purpose-built offset function. It separately compares a deep-clone
+    and effect-table relocation workload against a purpose-built structural
+    function. The default matrix patches 1,000, 10,000 and 100,000 physical
+    files, uses a warm-up followed by repeated measurements in alternating
+    order, records external wall/user/system/RSS metrics and internal
+    \ttref{PATCH_TIME} CPU time, and verifies SHA-256 manifests after every
+    scale. Run it with \t{make benchmark-structured-resources}; use
+    \t{BENCH_COUNTS}, \t{BENCH_REPETITIONS}, \t{BENCH_JOBS} and
+    \t{BENCH_RESULT_DIR} to control the documented harness. Timing results are
+    environment-specific and are therefore published as CI artifacts rather
+    than fixed language guarantees.
   \\
 
   or & \DEFINE{PATCH_RERAISE} &
