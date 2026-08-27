@@ -225,12 +225,12 @@ verify_outputs() {
 
 current_count=0
 for count in $counts; do
-  printf 'Preparing %,d physical input files...\n' "$count"
+  printf 'Preparing %d physical input files...\n' "$count"
   extend_input "$((current_count + 1))" "$count"
   current_count=$count
   repetitions=$(repetitions_for_count "$count")
 
-  printf 'Warming all methods at %,d files...\n' "$count"
+  printf 'Warming all methods at %d files...\n' "$count"
   for specification in "${methods[@]}"; do
     run_measurement "$specification" "$count" 0
   done
@@ -239,7 +239,7 @@ for count in $counts; do
   mv -- "$raw.tmp" "$raw"
 
   for (( repetition = 1; repetition <= repetitions; ++repetition )); do
-    printf 'Measuring %,d files, repetition %d/%d...\n' \
+    printf 'Measuring %d files, repetition %d/%d...\n' \
       "$count" "$repetition" "$repetitions"
     if (( repetition % 2 == 1 )); then
       for specification in "${methods[@]}"; do
