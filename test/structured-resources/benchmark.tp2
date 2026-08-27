@@ -1,6 +1,8 @@
 BACKUP ~benchmark/backup~
 AUTHOR ~WeiDU structured resource benchmark~
 
+ALWAYS
+
 DEFINE_PATCH_FUNCTION BENCHMARK_DIRECT_FIELD
 BEGIN
   READ_LONG 0x64 ability_offset
@@ -91,6 +93,8 @@ BEGIN
     WRITE_SHORT (clone + 0x20) cursor
     SET cursor += original_effect_count + 1
   END
+END
+
 END
 
 BEGIN ~Generate benchmark fixture~ DESIGNATED 0
