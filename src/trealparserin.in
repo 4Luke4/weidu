@@ -37,24 +37,24 @@ let resource_kind value = match String.uppercase value with
   | "SPL" -> Tp.TP_Resource_SPL
   | "EFF" -> Tp.TP_Resource_EFF
   | _ -> failwith (Printf.sprintf
-      "PATCH_RESOURCE: expected ITM, SPL, or EFF; found %S" value)
+      "structured resource: expected itm, spl, or eff; found [%s]" value)
 
 let resource_collection value = match String.uppercase value with
   | "ABILITIES" -> Tp.TP_Resource_Abilities
   | "GLOBAL_EFFECTS" -> Tp.TP_Resource_GlobalEffects
   | _ -> failwith (Printf.sprintf
-      "PATCH_RESOURCE: expected ABILITIES or GLOBAL_EFFECTS; found %S" value)
+      "structured resource: expected abilities or global_effects; found [%s]" value)
 
 let resource_effect_collection first connector handle =
   if String.uppercase first <> "EFFECTS" || String.uppercase connector <> "OF" then
     failwith (Printf.sprintf
-      "PATCH_RESOURCE: expected EFFECTS OF <handle>; found %S %S"
+      "structured resource: expected effects of <handle>; found [%s %s]"
       first connector);
   Tp.TP_Resource_EffectsOf handle
 
 let require_resource_word expected actual =
   if String.uppercase actual <> expected then
-    failwith (Printf.sprintf "PATCH_RESOURCE: expected %s; found %S"
+    failwith (Printf.sprintf "structured resource: expected %s; found [%s]"
       expected actual)
 }
 

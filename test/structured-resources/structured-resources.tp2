@@ -28,7 +28,7 @@ CREATE ITM VERSION ~V1.0~ ~l_equiv~
   WRITE_LONG 0xae 2
   WRITE_ASCII 0xbe ~EFFTEST~ (8)
 
-CREATE ITM VERSION ~V1.0~ ~lifecycle~
+CREATE ITM VERSION ~V1.0~ ~life~
   WRITE_ASCII 0x5f ~Z~
   READ_ASCII 0 before_noop (BUFFER_LENGTH)
   PATCH_RESOURCE ITM BEGIN
@@ -56,9 +56,9 @@ CREATE ITM VERSION ~V1.0~ ~lifecycle~
       END
       RESOURCE_APPEND effects OF ability AS effect BEGIN
         RESOURCE_SET effect opcode = 20
-      END
-      RESOURCE_INSERT effects OF ability BEFORE effect AS inserted BEGIN
-        RESOURCE_SET inserted opcode = 15
+        RESOURCE_INSERT effects OF ability BEFORE effect AS inserted BEGIN
+          RESOURCE_SET inserted opcode = 15
+        END
       END
       RESOURCE_FOR_EACH effects OF ability AS candidate BEGIN
         RESOURCE_GET candidate opcode INTO candidate_opcode
@@ -224,7 +224,7 @@ CREATE EFF VERSION ~V2.0~ ~effv20~
     PATCH_FAIL ~EFF V2.0 fields failed~
   END
 
-CREATE ITM VERSION ~V1.0~ ~malformed~
+CREATE ITM VERSION ~V1.0~ ~badlay~
   WRITE_LONG 0x64 1
   SET caught = 0
   PATCH_TRY
