@@ -82,7 +82,8 @@ run_weidu() {
   local log_file=$2
   (
     cd -- "$work_dir"
-    rm -f -- weidu.log SETUP-BENCHMARK.DEBUG setup-benchmark.debug
+    rm -f -- weidu.log BENCHMARK.DEBUG benchmark.debug \
+      SETUP-BENCHMARK.DEBUG setup-benchmark.debug
     "$weidu_bin" --nogame --no-exit-pause --force-install "$component" \
       benchmark.tp2 </dev/null >"$log_file" 2>&1
   )
@@ -153,7 +154,8 @@ run_measurement() {
 
   if ! (
     cd -- "$work_dir"
-    rm -f -- weidu.log SETUP-BENCHMARK.DEBUG setup-benchmark.debug "$time_file"
+    rm -f -- weidu.log BENCHMARK.DEBUG benchmark.debug \
+      SETUP-BENCHMARK.DEBUG setup-benchmark.debug "$time_file"
     /usr/bin/time -o "$time_file" -f '%e\t%U\t%S\t%M' \
       "$weidu_bin" --nogame --no-exit-pause --force-install "$component" \
       benchmark.tp2 </dev/null >"$log_file" 2>&1
@@ -163,7 +165,8 @@ run_measurement() {
     exit 1
   fi
 
-  debug_file=$(find "$work_dir" -maxdepth 1 -type f -iname 'setup-benchmark.debug' -print -quit)
+  debug_file=$(find "$work_dir" -maxdepth 1 -type f \
+    -iname '*benchmark.debug' -print -quit)
   if [[ -z "$debug_file" ]]; then
     printf '%s\n' "WeiDU debug log missing for $workload/$method" >&2
     exit 1
