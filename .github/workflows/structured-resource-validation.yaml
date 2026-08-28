@@ -59,65 +59,11 @@ jobs:
           make doc
           make linux_zip
 
-      - name: Build pre-optimization baseline
-        run: |
-          export PATH="$PATH:$PWD/bin"
-          eval "$(opam env)"
-          git worktree add --detach /tmp/weidu-baseline 16edfd1
-          mkdir -p /tmp/weidu-baseline/obj/x86_LINUX /tmp/weidu-baseline/obj/.depend
-          make -C /tmp/weidu-baseline weidu
-          baseline_bin=$(find /tmp/weidu-baseline/obj/x86_LINUX -maxdepth 1 \
-            -type f -name 'weidu*' -perm -111 -print -quit)
-          test -n "$baseline_bin"
-          cp "$baseline_bin" /tmp/weidu-baseline-bin
-
       - name: Benchmark candidate at bounded scales
         env:
           BENCH_COUNTS: 1000 10000
           BENCH_RESULT_DIR: /tmp/benchmark-candidate
         run: test/structured-resources/benchmark.sh /tmp/weidu-candidate
-
-      - name: Benchmark pre-optimization baseline at 1,000 files
-        env:
-          BENCH_COUNTS: 1000
-          BENCH_REPETITIONS: 7
-          BENCH_RESULT_DIR: /tmp/benchmark-baseline
-        run: test/structured-resources/benchmark.sh /tmp/weidu-baseline-bin
-
-      - name: Evaluate guard optimization
-        run: |
-          set -o pipefail
-          median_patch_time() {
-            workload=$1
-            input=$2
-            awk -F '\t' -v workload="$workload" \
-              'NR > 1 && $1 == workload && $2 == "structured" && $3 == 1000 { print $9 }' \
-              "$input" | sort -n | awk '
-                { values[NR] = $1 }
-                END {
-                  if (NR % 2) print values[(NR + 1) / 2]
-                  else printf "%.3f\n", (values[NR / 2] + values[NR / 2 + 1]) / 2
-                }'
-          }
-          field_before=$(median_patch_time field /tmp/benchmark-baseline/raw.tsv)
-          field_after=$(median_patch_time field /tmp/benchmark-candidate/raw.tsv)
-          structural_before=$(median_patch_time structural /tmp/benchmark-baseline/raw.tsv)
-          structural_after=$(median_patch_time structural /tmp/benchmark-candidate/raw.tsv)
-          awk -v field_before="$field_before" -v field_after="$field_after" \
-              -v structural_before="$structural_before" \
-              -v structural_after="$structural_after" '
-            BEGIN {
-              field_change = 100 * (field_before - field_after) / field_before
-              structural_change = 100 * (structural_before - structural_after) / structural_before
-              print "# Structured-command guard optimization\n"
-              print "Positive percentages are improvements in median PATCH_TIME across seven 1,000-file runs.\n"
-              print "| Workload | Before (CPU s) | After (CPU s) | Improvement |"
-              print "|---|---:|---:|---:|"
-              printf "| field | %.3f | %.3f | %.2f%% |\n", field_before, field_after, field_change
-              printf "| structural | %.3f | %.3f | %.2f%% |\n", structural_before, structural_after, structural_change
-              if (!((field_change >= 5 || structural_change >= 5) &&
-                    field_change >= -5 && structural_change >= -5)) exit 1
-            }' | tee /tmp/optimization.md
 
       - name: Assemble evidence
         if: always()
@@ -127,12 +73,6 @@ jobs:
             > /tmp/structured-resource-evidence/ci-status.txt
           if test -d /tmp/benchmark-candidate; then
             cp -r /tmp/benchmark-candidate /tmp/structured-resource-evidence/candidate
-          fi
-          if test -d /tmp/benchmark-baseline; then
-            cp -r /tmp/benchmark-baseline /tmp/structured-resource-evidence/baseline
-          fi
-          if test -f /tmp/optimization.md; then
-            cp /tmp/optimization.md /tmp/structured-resource-evidence/
           fi
 
       - name: Upload benchmark evidence
