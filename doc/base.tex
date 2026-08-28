@@ -5068,11 +5068,12 @@ projectile variable_name caster_level secondary_type
     byte-identical field edits against both bundled \t{ALTER_ITEM_*} helpers
     and a purpose-built offset function. It separately compares a deep-clone
     and effect-table relocation workload against a purpose-built structural
-    function. The default matrix patches 1,000, 10,000 and 100,000 physical
-    files, uses a warm-up followed by repeated measurements in alternating
-    order, records external wall/user/system/RSS metrics and internal
-    \ttref{PATCH_TIME} CPU time, and verifies SHA-256 manifests after every
-    scale. Run it with \t{make benchmark-structured-resources}; use
+    function. The default matrix uses seven measured 1,000-file runs after a
+    warm-up to establish an observed range, followed by one 10,000-file scale
+    confirmation over pre-seeded outputs. It records external
+    wall/user/system/RSS metrics and internal \ttref{PATCH_TIME} CPU time, and
+    verifies SHA-256 manifests after every scale. Run it with
+    \t{make benchmark-structured-resources}; use
     \t{BENCH_COUNTS}, \t{BENCH_REPETITIONS}, \t{BENCH_JOBS} and
     \t{BENCH_RESULT_DIR} to control the documented harness. Timing results are
     environment-specific and are therefore published as CI artifacts rather

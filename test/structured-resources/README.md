@@ -27,12 +27,14 @@ ad hoc functions. It has two workloads:
   rebuilds ownership indices. It compares `PATCH_RESOURCE` with a purpose-built
   direct-offset implementation of the same graph rewrite.
 
-The default matrix uses 1,000, 10,000, and 100,000 physical input files. It
-runs one unrecorded warm-up per method, then respectively records seven, five,
-and three repetitions. Method order is reversed on alternating repetitions to
-reduce order bias. Input generation is outside the timed region. After every
-scale, SHA-256 manifests must show byte-for-byte equivalence between all
-implementations of a workload or the benchmark fails.
+The default matrix uses 1,000 and 10,000 physical input files. At 1,000 files
+it runs one unrecorded warm-up per method followed by seven measurements,
+reversing method order on alternating repetitions to reduce order bias. It then
+records one 10,000-file scale-confirmation observation per method. Before every
+scale, input and output directories are pre-seeded outside the timed region;
+this gives each method equivalent existing-file state without an unreported
+full-scale warm-up. After every scale, SHA-256 manifests must show byte-for-byte
+equivalence between all implementations of a workload or the benchmark fails.
 
 Run the complete Linux benchmark with:
 
@@ -58,6 +60,8 @@ WeiDU process. Results comprise:
 - `environment.txt`: the timestamp, host characteristics, binary digest,
   source revision, scale, and repetition settings.
 
+The repeated 1,000-file measurements provide an observed variance range. The
+single 10,000-file observation tests scale but is not a variance estimate.
 Wall time is the appropriate installation-impact measure because it includes
 file discovery, reads, patching, and writes. `PATCH_TIME` isolates the patch
 body's user-CPU cost. Neither metric is a language guarantee: results depend on

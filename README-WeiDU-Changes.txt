@@ -5,8 +5,8 @@ Version 251:
     operations for abilities and effects. Regression examples cover
     cross-collection graph rewrites and complete rollback after a late
     failure. A reproducible Linux benchmark compares field and structural
-    workloads with bundled and purpose-built ad hoc functions at up to
-    100,000 files.
+    workloads with bundled and purpose-built ad hoc functions, using repeated
+    1,000-file measurements and a 10,000-file scale confirmation.
   * CREATE called within CREATE works as expected.
   * CREATE sets SOURCE_* and DEST_* variables.
   * Auto-update does not fail if the filename of the newest WeiDU

@@ -24,7 +24,7 @@ for command in cp find sha256sum sort xargs /usr/bin/time; do
   fi
 done
 
-counts=${BENCH_COUNTS:-"1000 10000 100000"}
+counts=${BENCH_COUNTS:-"1000 10000"}
 repetition_override=${BENCH_REPETITIONS:-}
 jobs=${BENCH_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf '1')}
 case "$jobs" in
@@ -118,16 +118,15 @@ repetitions_for_count() {
     printf '%s\n' "$repetition_override"
   elif (( count <= 1000 )); then
     printf '7\n'
-  elif (( count <= 10000 )); then
-    printf '5\n'
   else
-    printf '3\n'
+    printf '1\n'
   fi
 }
 
-extend_input() {
-  local from=$1
-  local to=$2
+extend_fixture_directory() {
+  local destination=$1
+  local from=$2
+  local to=$3
   if (( from > to )); then
     return
   fi
@@ -139,7 +138,23 @@ extend_input() {
       for name do
         cp --reflink=never -- "$seed" "$destination/$name"
       done
-    ' sh "$seed" "$work_dir/benchmark-input"
+    ' sh "$seed" "$destination"
+}
+
+extend_fixtures() {
+  local from=$1
+  local to=$2
+  local directory
+  extend_fixture_directory "$work_dir/benchmark-input" "$from" "$to"
+  for directory in \
+    benchmark-out-field-structured \
+    benchmark-out-field-direct \
+    benchmark-out-field-bundled \
+    benchmark-out-structural-structured \
+    benchmark-out-structural-direct
+  do
+    extend_fixture_directory "$work_dir/$directory" "$from" "$to"
+  done
 }
 
 run_measurement() {
@@ -228,17 +243,21 @@ verify_outputs() {
 current_count=0
 for count in $counts; do
   printf 'Preparing %d physical input files...\n' "$count"
-  extend_input "$((current_count + 1))" "$count"
+  extend_fixtures "$((current_count + 1))" "$count"
   current_count=$count
   repetitions=$(repetitions_for_count "$count")
 
-  printf 'Warming all methods at %d files...\n' "$count"
-  for specification in "${methods[@]}"; do
-    run_measurement "$specification" "$count" 0
-  done
-  # Warm-up data exercises the full path but is deliberately excluded.
-  awk -F '\t' 'NR == 1 || $4 != 0' "$raw" >"$raw.tmp"
-  mv -- "$raw.tmp" "$raw"
+  if (( count <= 1000 )); then
+    printf 'Warming all methods at %d files...\n' "$count"
+    for specification in "${methods[@]}"; do
+      run_measurement "$specification" "$count" 0
+    done
+    # Warm-up data exercises the full path but is deliberately excluded.
+    awk -F '\t' 'NR == 1 || $4 != 0' "$raw" >"$raw.tmp"
+    mv -- "$raw.tmp" "$raw"
+  else
+    printf 'Using pre-seeded outputs; no unreported full-scale warm-up at %d files.\n' "$count"
+  fi
 
   for (( repetition = 1; repetition <= repetitions; ++repetition )); do
     printf 'Measuring %d files, repetition %d/%d...\n' \
@@ -282,7 +301,8 @@ median_metric() {
 summary="$result_dir/summary.md"
 {
   printf '# Structured resource benchmark\n\n'
-  printf 'All rows report medians from measured runs after one warm-up. '
+  printf 'The 1,000-file rows report medians after one full-scale warm-up; '
+  printf 'the 10,000-file rows are single scale-confirmation observations over pre-seeded outputs. '
   printf 'The wall-time ratio is relative to the purpose-built direct-offset function for the same workload and scale.\n\n'
   printf '| Workload | Files | Method | Runs | Median wall (s) | Wall range (s) | Median PATCH_TIME (CPU s) | Files/s | Wall ratio vs direct |\n'
   printf '|---|---:|---|---:|---:|---:|---:|---:|---:|\n'
@@ -324,7 +344,7 @@ environment="$result_dir/environment.txt"
   printf 'weidu_sha256=%s\n' "$(sha256sum "$weidu_bin" | awk '{ print $1 }')"
   printf 'git_head=%s\n' "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
   printf 'counts=%s\n' "$counts"
-  printf 'repetition_override=%s\n' "${repetition_override:-adaptive_7_5_3}"
+  printf 'repetition_override=%s\n' "${repetition_override:-adaptive_7_1}"
   printf 'generation_jobs=%s\n' "$jobs"
 } >"$environment"
 

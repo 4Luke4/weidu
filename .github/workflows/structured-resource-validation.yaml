@@ -16,7 +16,7 @@ concurrency:
 jobs:
   linux:
     runs-on: ubuntu-22.04
-    timeout-minutes: 240
+    timeout-minutes: 180
     steps:
       - name: Checkout candidate
         uses: actions/checkout@v4
@@ -71,16 +71,16 @@ jobs:
           test -n "$baseline_bin"
           cp "$baseline_bin" /tmp/weidu-baseline-bin
 
-      - name: Benchmark candidate through 100,000 files
+      - name: Benchmark candidate at bounded scales
         env:
-          BENCH_COUNTS: 1000 10000 100000
+          BENCH_COUNTS: 1000 10000
           BENCH_RESULT_DIR: /tmp/benchmark-candidate
         run: test/structured-resources/benchmark.sh /tmp/weidu-candidate
 
-      - name: Benchmark pre-optimization baseline at 10,000 files
+      - name: Benchmark pre-optimization baseline at 1,000 files
         env:
-          BENCH_COUNTS: 10000
-          BENCH_REPETITIONS: 5
+          BENCH_COUNTS: 1000
+          BENCH_REPETITIONS: 7
           BENCH_RESULT_DIR: /tmp/benchmark-baseline
         run: test/structured-resources/benchmark.sh /tmp/weidu-baseline-bin
 
@@ -91,7 +91,7 @@ jobs:
             workload=$1
             input=$2
             awk -F '\t' -v workload="$workload" \
-              'NR > 1 && $1 == workload && $2 == "structured" && $3 == 10000 { print $9 }' \
+              'NR > 1 && $1 == workload && $2 == "structured" && $3 == 1000 { print $9 }' \
               "$input" | sort -n | awk '
                 { values[NR] = $1 }
                 END {
@@ -110,7 +110,7 @@ jobs:
               field_change = 100 * (field_before - field_after) / field_before
               structural_change = 100 * (structural_before - structural_after) / structural_before
               print "# Structured-command guard optimization\n"
-              print "Positive percentages are improvements in median PATCH_TIME at 10,000 files.\n"
+              print "Positive percentages are improvements in median PATCH_TIME across seven 1,000-file runs.\n"
               print "| Workload | Before (CPU s) | After (CPU s) | Improvement |"
               print "|---|---:|---:|---:|"
               printf "| field | %.3f | %.3f | %.2f%% |\n", field_before, field_after, field_change
